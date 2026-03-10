@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QGIS 地図データ自動生成ツール (xROAD連携)</title>
+    <meta name="description" content="橋梁リストからQGIS用のカラー付き地図データを全自動で作成します">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success-color: #10b981;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-light: #64748b;
+            --border-color: #e2e8f0;
+            --border-radius: 12px;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            width: 100%;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            /* Widened for table */
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        /* Drag & Drop Area */
+        .drop-zone {
+            border: 2px dashed #93c5fd;
+            border-radius: var(--border-radius);
+            padding: 40px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: #eff6ff;
+            margin-top: 20px;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: var(--primary-color);
+            background-color: #dbeafe;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--text-main);
+        }
+
+        select {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+        }
+
+        /* Buttons */
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background-color: #eff6ff;
+            color: var(--primary-hover);
+        }
+
+        /* Table Styles */
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .results-table th,
+        .results-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .results-table th {
+            background-color: #f8fafc;
+            font-weight: 700;
+            color: var(--text-light);
+            font-size: 14px;
+        }
+
+        .candidate-select {
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            width: 100%;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-warn {
+            background: #fef08a;
+            color: #854d0e;
+        }
+
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Loader */
+        .loader {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s infinite linear;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Steps */
+        #step2,
+        #step3,
+        #step4 {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>QGIS 地図データ自動生成ツール</h1>
+        <p>エクセルをアップロードするだけで、色付きのQGISマップデータが完成します。</p>
+    </div>
+
+    <div class="container">
+        <!-- Step 1: Settings & Upload -->
+        <div class="card" id="step1">
+            <h2 style="margin-top:0; font-size:22px; text-align:left;">1. 検索条件とファイルの準備</h2>
+
+            <div
+                style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                <p style="margin-top:0;"><strong>【準備】</strong>
+                    以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。</p>
+                <button class="btn btn-outline" onclick="downloadTemplate()">📥 施設検索テンプレート.xlsx をダウンロード</button>
+            </div>
+
+            <div class="form-group">
+                <label for="facility-type-select">対象とする施設の種類</label>
+                <select id="facility-type-select">
+                    <option value="bridges">橋梁（デフォルト）</option>
+                    <option value="tunnels">トンネル</option>
+                    <option value="sheds">シェッド</option>
+                    <option value="culverts">カルバート</option>
+                    <option value="pedestrian-decks">歩道橋</option>
+                    <option value="signages">大型標識</option>
+                    <option value="earthworks">土工</option>
+                    <option value="all">全て検索（少し時間がかかります）</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="pref-select">（オプション）都道府県の絞り込み</label>
+                <select id="pref-select">
+                    <option value="">指定しない (全国から検索)</option>
+                    <option value="01">01 北海道</option>
+                    <option value="02">02 青森県</option>
+                    <option value="03">03 岩手県</option>
+                    <option value="04">04 宮城県</option>
+                    <option value="05">05 秋田県</option>
+                    <option value="06">06 山形県</option>
+                    <option value="07">07 福島県</option>
+                    <option value="08">08 茨城県</option>
+                    <option value="09">09 栃木県</option>
+                    <option value="10">10 群馬県</option>
+                    <option value="11">11 埼玉県</option>
+                    <option value="12">12 千葉県</option>
+                    <option value="13">13 東京都</option>
+                    <option value="14">14 神奈川県</option>
+                    <option value="15">15 新潟県</option>
+                    <option value="16">16 富山県</option>
+                    <option value="17">17 石川県</option>
+                    <option value="18">18 福井県</option>
+                    <option value="19">19 山梨県</option>
+                    <option value="20">20 長野県</option>
+                    <option value="21">21 岐阜県</option>
+                    <option value="22">22 静岡県</option>
+                    <option value="23">23 愛知県</option>
+                    <option value="24">24 三重県</option>
+                    <option value="25">25 滋賀県</option>
+                    <option value="26">26 京都府</option>
+                    <option value="27">27 大阪府</option>
+                    <option value="28">28 兵庫県</option>
+                    <option value="29">29 奈良県</option>
+                    <option value="30">30 和歌山県</option>
+                    <option value="31">31 鳥取県</option>
+                    <option value="32">32 島根県</option>
+                    <option value="33">33 岡山県</option>
+                    <option value="34">34 広島県</option>
+                    <option value="35">35 山口県</option>
+                    <option value="36">36 徳島県</option>
+                    <option value="37">37 香川県</option>
+                    <option value="38">38 愛媛県</option>
+                    <option value="39">39 高知県</option>
+                    <option value="40">40 福岡県</option>
+                    <option value="41">41 佐賀県</option>
+                    <option value="42">42 長崎県</option>
+                    <option value="43">43 熊本県</option>
+                    <option value="44">44 大分県</option>
+                    <option value="45">45 宮崎県</option>
+                    <option value="46">46 鹿児島県</option>
+                    <option value="47">47 沖縄県</option>
+                </select>
+            </div>
+
+            <h2 style="margin-top:40px; font-size:22px; text-align:left;">2. ファイルの読み込み</h2>
+            <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                <div style="font-size: 48px; color: var(--primary-color);">📁</div>
+                <div style="font-size: 18px; font-weight: 700; margin: 10px 0; color: #1e3a8a;">
+                    入力済みのテンプレートファイル、またはPDFなどをドロップ</div>
+                <div style="font-size: 14px; color: var(--text-light);">またはクリックして選択 (Excel, CSV, PDF 対応)</div>
+                <input type="file" id="file-input" accept=".csv, .xlsx, .xls, .pdf">
+            </div>
+
+            <div id="loading-area" style="display:none; margin-top: 20px;">
+                <button class="btn" id="loading-btn" disabled style="width:100%;">
+                    <span>処理中...</span>
+                    <div class="loader" style="display:block;"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Confirmation -->
+        <div class="card" id="step2">
+            <h2
+                style="margin-top:0; font-size:22px; text-align:left; display: flex; justify-content: space-between; align-items: center;">
+                <div>3. ヒットした施設の確認 <span class="badge" id="total-count-badge"
+                        style="background:#2563eb; color:white; padding:4px 10px; border-radius:20px; font-size:14px; margin-left:10px;">抽出:
+                        0件</span></div>
+                <button class="btn btn-outline" style="padding: 8px 16px; font-size: 14px;"
+                    onclick="location.reload()">やり直す</button>
+            </h2>
+            <p style="text-align: left; color: var(--text-light);">
+                入力ファイルから自動で抽出された施設です。同名の施設が複数ある場合はプルダウンから正しい所在地（市町村）や橋長を選んでください。
+            </p>
+
+            <div style="overflow-x: auto;">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th width="80">状態</th>
+                            <th width="200">検索した施設名</th>
+                            <th>APIでの検索結果 (採用する位置データ)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 30px; text-align: right;">
+                <button class="btn" id="export-btn" onclick="exportMapData()" style="width: 100%;">
+                    <span>✅ この内容で地図（ZIP）を生成する</span>
+                    <div class="loader" id="export-loader"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Success -->
+        <div class="card" id="step3">
+            <div style="font-size: 72px; color: var(--success-color); margin-bottom: 20px;">✨</div>
+            <h2 style="margin-top:0; font-size:24px;">作成が完了しました！</h2>
+            <p>ファイルのダウンロードが開始されました。</p>
+
+            <div
+                style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 20px; border-radius: 8px; text-align: left; margin-top: 20px; color: #166534;">
+                <strong>💡 次の手順:</strong>
+                <ol style="margin: 10px 0 0 0; padding-left: 20px;">
+                    <li style="margin-bottom: 8px;">ダウンロードされた <b>search_results.zip</b> を解凍します。</li>
+                    <li style="margin-bottom: 8px;">中に入っている <b>search_results.geojson</b> を、QGISの画面にドラッグ＆ドロップしてください。
+                    </li>
+                    <li>点検結果ごとに自動で色分けされたピンが地図上に表示されます！</li>
+                </ol>
+            </div>
+
+            <span
+                style="display: inline-block; margin-top: 20px; color: var(--text-light); text-decoration: underline; cursor: pointer;"
+                onclick="location.reload()">最初からやり直す</span>
+        </div>
+    </div>
+
+    <script>
+        // Global State
+        let apiResults = {}; // Name -> Candidates mapping
+
+        // Template Download
+        function downloadTemplate() {
+            const ws = XLSX.utils.aoa_to_sheet([
+                ["施設名", "※この列の2行目以降に名前を貼り付けてください（B列以降は不要）"],
+                ["サンプル橋", ""],
+                ["", ""]
+            ]);
+            // Adjust column width
+            ws['!cols'] = [{ wch: 30 }, { wch: 60 }];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Template");
+            XLSX.writeFile(wb, "施設検索テンプレート.xlsx");
+        }
+
+        // Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        // Setup Drag & Drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files), false);
+        fileInput.addEventListener('change', e => handleFiles(e.target.files), false);
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+
+            let bridgeNames = [];
+
+            document.getElementById('drop-zone').style.display = 'none';
+            document.getElementById('loading-area').style.display = 'block';
+            const loadingBtnText = document.querySelector('#loading-btn span');
+
+            try {
+                if (file.name.toLowerCase().endsWith('.pdf') || (file.name.toLowerCase().endsWith('.csv') && file.size > 0 && !file.name.includes("テンプレート"))) {
+                    // Send to Gemini AI for extraction
+                    loadingBtnText.textContent = 'AIでファイルから施設名を自動抽出中...';
+                    bridgeNames = await extractWithAI(file);
+                } else if (file.name.toLowerCase().endsWith('.csv')) {
+                    bridgeNames = await parseCSVFile(file);
+                } else if (file.name.match(/\.xlsx?$/i)) {
+                    bridgeNames = await parseExcelFile(file);
+                } else {
+                    throw new Error('対応していないファイル形式です。');
+                }
+
+                if (bridgeNames.length > 0) {
+                    loadingBtnText.textContent = 'xROAD APIから候補を検索中...';
+                    await fetchCandidates(bridgeNames);
+                } else {
+                    throw new Error('施設名が見つかりませんでした。');
+                }
+            } catch (error) {
+                alert(`処理エラー: ${error.message}`);
+                document.getElementById('drop-zone').style.display = 'block';
+                document.getElementById('loading-area').style.display = 'none';
+            }
+        }
+
+        async function extractWithAI(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Pass the facility type text so Gemini knows what to look for
+            const facilitySelect = document.getElementById('facility-type-select');
+            const facilityText = facilitySelect.options[facilitySelect.selectedIndex].text.replace(/（.*）/, '');
+            formData.append('facility_type_jp', facilityText);
+
+            const response = await fetch('/api/extract', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                throw new Error(err || 'AI抽出APIでエラーが発生しました');
+            }
+
+            const data = await response.json();
+            return data.names || [];
+        }
+
+        async function fetchCandidates(names) {
+            const prefCode = document.getElementById('pref-select').value;
+            const facilityType = document.getElementById('facility-type-select').value;
+            let endpoints = facilityType === 'all'
+                ? ['bridges', 'tunnels', 'sheds', 'culverts', 'pedestrian-decks', 'signages', 'earthworks']
+                : [facilityType];
+
+            const response = await fetch('/api/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bridge_names: names, endpoints: endpoints, pref_code: prefCode })
+            });
+
+            if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
+
+            const data = await response.json();
+            apiResults = data.results;
+
+            renderConfirmationTable(names);
+
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+        }
+
+        function renderConfirmationTable(names) {
+            const tbody = document.getElementById('results-tbody');
+            tbody.innerHTML = '';
+
+            document.getElementById('total-count-badge').textContent = `抽出: ${names.length}件`;
+
+            names.forEach(name => {
+                const candidates = apiResults[name] || [];
+                const tr = document.createElement('tr');
+
+                // Status Badge
+                const tdStatus = document.createElement('td');
+                if (candidates.length === 1) {
+                    tdStatus.innerHTML = '<span class="status-badge status-ok">確定</span>';
+                } else if (candidates.length > 1) {
+                    tdStatus.innerHTML = '<span class="status-badge status-warn">複数候補</span>';
+                } else {
+                    tdStatus.innerHTML = '<span class="status-badge status-error">対象なし</span>';
+                }
+                tr.appendChild(tdStatus);
+
+                // Name
+                const tdName = document.createElement('td');
+                tdName.style.fontWeight = '700';
+                tdName.textContent = name;
+                tr.appendChild(tdName);
+
+                // Select Dropdown
+                const tdSelect = document.createElement('td');
+                if (candidates.length === 0) {
+                    tdSelect.innerHTML = '<span style="color:#ef4444; font-size:14px;">見つかりませんでした（出力から除外されます）</span>';
+                } else {
+                    const select = document.createElement('select');
+                    select.className = 'candidate-select';
+                    select.dataset.bridgeName = name; // Used to collect features later
+
+                    candidates.forEach((cand, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = idx;
+
+                        let dimensionStr = '';
+                        if (cand.facility_type === 'bridges') {
+                            const hasLen = cand.bridge_length !== undefined && cand.bridge_length !== null && cand.bridge_length !== "";
+                            const hasWidth = cand.bridge_width !== undefined && cand.bridge_width !== null && cand.bridge_width !== "";
+                            const lenStr = hasLen ? `長:${cand.bridge_length}m` : '';
+                            const widthStr = hasWidth ? `幅:${cand.bridge_width}m` : '';
+                            if (lenStr || widthStr) dimensionStr = ` ${lenStr} ${widthStr}`.trim();
+                        } else {
+                            // Tunnels, sheds, etc.
+                            const hasLen = cand.bridge_length !== undefined && cand.bridge_length !== null && cand.bridge_length !== "";
+                            if (hasLen) dimensionStr = `長:${cand.bridge_length}m`;
+                        }
+
+                        const extraInfo = [];
+                        if (dimensionStr) extraInfo.push(dimensionStr);
+                        if (cand.kanrisya) extraInfo.push(`管:${cand.kanrisya}`);
+                        if (cand.rosen) extraInfo.push(`路:${cand.rosen}`);
+
+                        const extraStr = extraInfo.length > 0 ? ` [${extraInfo.join(' / ')}]` : '';
+
+                        opt.textContent = `${cand.location}${extraStr} | ${cand.facility_name}`;
+                        select.appendChild(opt);
+                    });
+
+                    // Option to skip this entry
+                    const skipOpt = document.createElement('option');
+                    skipOpt.value = '-1';
+                    skipOpt.textContent = '❌ この施設をマップから除外する';
+                    select.appendChild(skipOpt);
+
+                    tdSelect.appendChild(select);
+                }
+                tr.appendChild(tdSelect);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function exportMapData() {
+            // Collect selected features
+            const features = [];
+            const selects = document.querySelectorAll('.candidate-select');
+
+            selects.forEach(select => {
+                const name = select.dataset.bridgeName;
+                const selectedIdx = parseInt(select.value, 10);
+
+                if (selectedIdx >= 0) {
+                    const candidate = apiResults[name][selectedIdx];
+                    if (candidate && candidate.feature) {
+                        features.push(candidate.feature);
+                    }
+                }
+            });
+
+            if (features.length === 0) {
+                alert('地図に出力する施設が1つも選ばれていません。');
+                return;
+            }
+
+            // Export Process
+            const btn = document.getElementById('export-btn');
+            const loader = document.getElementById('export-loader');
+            btn.disabled = true;
+            btn.querySelector('span').textContent = 'ZIPファイルを作成中...';
+            loader.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ features: features })
+                });
+
+                if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'search_results.zip';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+
+                document.getElementById('step2').style.display = 'none';
+                document.getElementById('step3').style.display = 'block';
+
+            } catch (error) {
+                alert(`出力エラー: ${error.message}`);
+                btn.disabled = false;
+                btn.querySelector('span').textContent = '✅ この内容で地図（ZIP）を生成する';
+                loader.style.display = 'none';
+            }
+        }
+
+        // Extract column A logic
+        function extractColumnA(data) {
+            const names = [];
+            // Skip header (i=0 -> start from i=1)
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                // Assuming it's an array of arrays or array of objects
+                let val = null;
+                if (Array.isArray(row)) {
+                    val = row[0];
+                } else {
+                    const keys = Object.keys(row);
+                    if (keys.length > 0) val = row[keys[0]];
+                }
+
+                if (val) {
+                    const cleanName = val.toString().trim();
+                    if (cleanName) names.push(cleanName);
+                }
+            }
+            return names;
+        }
+
+        function parseCSVFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        const lines = e.target.result.split(/\r\n|\n/);
+                        const names = [];
+                        // Skip header (i=1)
+                        for (let i = 1; i < lines.length; i++) {
+                            if (!lines[i].trim()) continue;
+                            const firstCol = lines[i].split(',')[0].trim().replace(/^"|"$/g, '');
+                            if (firstCol) names.push(firstCol);
+                        }
+                        resolve(names);
+                    } catch (err) { reject(err); }
+                };
+                reader.onerror = () => reject(new Error('CSV read error'));
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        function parseExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        // header: 1 converts to array of arrays
+                        const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                        resolve(extractColumnA(data));
+                    } catch (error) { reject(error); }
+                };
+                reader.onerror = () => reject(new Error('Excel read error'));
+                reader.readAsBinaryString(file);
+            });
+        }
+    </script>
+</body>
+
+</html>

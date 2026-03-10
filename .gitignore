@@ -1,0 +1,13 @@
+__pycache__/
+*.qml~
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+env.bak/
+venv.bak/
+search_results.zip
