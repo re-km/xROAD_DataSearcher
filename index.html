@@ -203,6 +203,57 @@
             color: #991b1b;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: -10px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .tab-btn {
+            background-color: #cbd5e1;
+            color: #475569;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: 12px 12px 0 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-btn:hover {
+            background-color: #94a3b8;
+            color: white;
+        }
+
+        .tab-btn.active {
+            background-color: var(--card-bg);
+            color: var(--primary-color);
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
         /* Loader */
         .loader {
             display: none;
@@ -237,16 +288,15 @@
     </div>
 
     <div class="container">
-        <!-- Step 1: Settings & Upload -->
-        <div class="card" id="step1">
-            <h2 style="margin-top:0; font-size:22px; text-align:left;">1. 検索条件とファイルの準備</h2>
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" id="tab-btn-file" onclick="switchTab('file')">ファイルから検索</button>
+            <button class="tab-btn" id="tab-btn-condition" onclick="switchTab('condition')">条件から検索</button>
+        </div>
 
-            <div
-                style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
-                <p style="margin-top:0;"><strong>【準備】</strong>
-                    以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。</p>
-                <button class="btn btn-outline" onclick="downloadTemplate()">📥 施設検索テンプレート.xlsx をダウンロード</button>
-            </div>
+        <!-- Step 1: Settings & Upload -->
+        <div class="card" id="step1" style="border-top-left-radius: 0;">
+            <h2 style="margin-top:0; font-size:22px; text-align:left;">1. 共通設定</h2>
 
             <div class="form-group">
                 <label for="facility-type-select">対象とする施設の種類</label>
@@ -263,7 +313,7 @@
             </div>
 
             <div class="form-group">
-                <label for="pref-select">（オプション）都道府県の絞り込み</label>
+                <label for="pref-select">都道府県の絞り込み</label>
                 <select id="pref-select">
                     <option value="">指定しない (全国から検索)</option>
                     <option value="01">01 北海道</option>
@@ -316,13 +366,102 @@
                 </select>
             </div>
 
-            <h2 style="margin-top:40px; font-size:22px; text-align:left;">2. ファイルの読み込み</h2>
-            <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-                <div style="font-size: 48px; color: var(--primary-color);">📁</div>
-                <div style="font-size: 18px; font-weight: 700; margin: 10px 0; color: #1e3a8a;">
-                    入力済みのテンプレートファイル、またはPDFなどをドロップ</div>
-                <div style="font-size: 14px; color: var(--text-light);">またはクリックして選択 (Excel, CSV, PDF 対応)</div>
-                <input type="file" id="file-input" accept=".csv, .xlsx, .xls, .pdf">
+            <div id="tab-content-file" class="tab-content active">
+                <div
+                    style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                    <p style="margin-top:0;"><strong>【準備】</strong>
+                        以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。</p>
+                    <button class="btn btn-outline" onclick="downloadTemplate()">📥 施設検索テンプレート.xlsx をダウンロード</button>
+                </div>
+
+                <h2 style="margin-top:20px; font-size:22px; text-align:left;">2. ファイルの読み込み</h2>
+                <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                    <div style="font-size: 48px; color: var(--primary-color);">📁</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 10px 0; color: #1e3a8a;">
+                        入力済みのテンプレートファイル、またはPDFなどをドロップ</div>
+                    <div style="font-size: 14px; color: var(--text-light);">またはクリックして選択 (Excel, CSV, PDF 対応)</div>
+                    <input type="file" id="file-input" accept=".csv, .xlsx, .xls, .pdf">
+                </div>
+            </div>
+
+            <div id="tab-content-condition" class="tab-content">
+                <h2 style="margin-top:20px; font-size:22px; text-align:left;">2. 検索条件の指定</h2>
+
+                <div class="form-group">
+                    <label for="cond-keyword">すべての項目からキーワード検索 (スペース区切り)</label>
+                    <input type="text" id="cond-keyword" placeholder="例: ひび割れ 補修"
+                        style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                </div>
+
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="cond-city">市区町村</label>
+                        <input type="text" id="cond-city" placeholder="例: 大津市"
+                            style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="cond-kanrisya">管理者</label>
+                        <input type="text" id="cond-kanrisya" placeholder="例: 滋賀県"
+                            style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="cond-rosen">路線名</label>
+                        <input type="text" id="cond-rosen" placeholder="例: 国道"
+                            style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="cond-facility-name">施設名</label>
+                        <input type="text" id="cond-facility-name"
+                            style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="cond-hantei">判定区分 (点検結果)</label>
+                        <select id="cond-hantei"
+                            style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                            <option value="">指定しない</option>
+                            <option value="1">I (健全)</option>
+                            <option value="2">II (予防保全段階)</option>
+                            <option value="3">III (早期措置段階)</option>
+                            <option value="4">IV (緊急措置段階)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>橋長 (m)</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="number" id="cond-length-min" placeholder="最小"
+                                style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;"
+                                step="0.1">
+                            <span>〜</span>
+                            <input type="number" id="cond-length-max" placeholder="最大"
+                                style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;"
+                                step="0.1">
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>幅員 (m)</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="number" id="cond-width-min" placeholder="最小"
+                                style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;"
+                                step="0.1">
+                            <span>〜</span>
+                            <input type="number" id="cond-width-max" placeholder="最大"
+                                style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;"
+                                step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn" style="width: 100%; margin-top: 10px;" onclick="executeConditionSearch()">🔍
+                    条件で施設を検索する</button>
             </div>
 
             <div id="loading-area" style="display:none; margin-top: 20px;">
@@ -343,6 +482,10 @@
                 <button class="btn btn-outline" style="padding: 8px 16px; font-size: 14px;"
                     onclick="location.reload()">やり直す</button>
             </h2>
+            <div id="search-summary-box"
+                style="display: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: left; font-size: 14px;">
+                <strong style="color: #3b82f6;">🔍 検索条件:</strong> <span id="search-summary-text"></span>
+            </div>
             <p style="text-align: left; color: var(--text-light);">
                 入力ファイルから自動で抽出された施設です。同名の施設が複数ある場合はプルダウンから正しい所在地（市町村）や橋長を選んでください。
             </p>
@@ -362,9 +505,13 @@
                 </table>
             </div>
 
-            <div style="margin-top: 30px; text-align: right;">
-                <button class="btn" id="export-btn" onclick="exportMapData()" style="width: 100%;">
-                    <span>✅ この内容で地図（ZIP）を生成する</span>
+            <div style="margin-top: 30px; display: flex; gap: 15px;">
+                <button class="btn btn-outline" onclick="exportCSV()"
+                    style="flex: 1; border-color: #10b981; color: #10b981;">
+                    <span>📊 CSVとしてダウンロード</span>
+                </button>
+                <button class="btn" id="export-btn" onclick="exportMapData()" style="flex: 1;">
+                    <span>✅ QGIS用 地図（ZIP）を生成</span>
                     <div class="loader" id="export-loader"></div>
                 </button>
             </div>
@@ -396,6 +543,164 @@
     <script>
         // Global State
         let apiResults = {}; // Name -> Candidates mapping
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            document.getElementById(`tab-btn-${tabId}`).classList.add('active');
+            document.getElementById(`tab-content-${tabId}`).classList.add('active');
+        }
+
+        async function executeConditionSearch() {
+            const prefCode = document.getElementById('pref-select').value;
+            const facilityType = document.getElementById('facility-type-select').value;
+
+            if (!prefCode) {
+                alert('条件検索を行う場合は、必ず「1.共通設定」で「都道府県」を選択してください。（全国検索は非常に処理件数が多くなるため）');
+                return;
+            }
+
+            const conditions = {
+                keyword: document.getElementById('cond-keyword').value,
+                city: document.getElementById('cond-city').value,
+                kanrisya: document.getElementById('cond-kanrisya').value,
+                rosen: document.getElementById('cond-rosen').value,
+                facility_name: document.getElementById('cond-facility-name').value,
+                hantei_kubun: document.getElementById('cond-hantei').value,
+                length_min: document.getElementById('cond-length-min').value,
+                length_max: document.getElementById('cond-length-max').value,
+                width_min: document.getElementById('cond-width-min').value,
+                width_max: document.getElementById('cond-width-max').value
+            };
+
+            // Build human readable summary
+            let summaryParts = [];
+            const prefText = document.getElementById('pref-select').options[document.getElementById('pref-select').selectedIndex].text;
+            summaryParts.push(`都道府県: ${prefText}`);
+            if (conditions.keyword) summaryParts.push(`キーワード: ${conditions.keyword}`);
+            if (conditions.city) summaryParts.push(`市区町村: ${conditions.city}`);
+            if (conditions.kanrisya) summaryParts.push(`管理者: ${conditions.kanrisya}`);
+            if (conditions.rosen) summaryParts.push(`路線名: ${conditions.rosen}`);
+            if (conditions.facility_name) summaryParts.push(`施設名: ${conditions.facility_name}`);
+
+            const hanteiSelect = document.getElementById('cond-hantei');
+            if (conditions.hantei_kubun) summaryParts.push(`判定区分: ${hanteiSelect.options[hanteiSelect.selectedIndex].text}`);
+
+            if (conditions.length_min || conditions.length_max) {
+                summaryParts.push(`橋長: ${conditions.length_min || '最小'}m 〜 ${conditions.length_max || '最大'}m`);
+            }
+            if (conditions.width_min || conditions.width_max) {
+                summaryParts.push(`幅員: ${conditions.width_min || '最小'}m 〜 ${conditions.width_max || '最大'}m`);
+            }
+
+            window.currentSearchSummary = summaryParts.join(' / ');
+
+            const endpoints = facilityType === 'all'
+                ? ['bridges', 'tunnels', 'sheds', 'culverts', 'pedestrian-decks', 'signages', 'earthworks']
+                : [facilityType];
+
+            document.getElementById('tab-content-condition').style.display = 'none';
+            document.querySelector('.tabs').style.display = 'none';
+            document.getElementById('loading-area').style.display = 'block';
+            document.querySelector('#loading-btn span').textContent = '指定された条件でAPIから全データを取得＆フィルタリング中... (1分以上かかる場合があります)';
+
+            try {
+                const response = await fetch('/api/condition_search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoints: endpoints, pref_code: prefCode, conditions: conditions })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`サーバーエラー: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                apiResults = {};
+                const extractedNames = [];
+
+                if (data.results.length === 0) {
+                    alert('指定された条件に一致する施設は見つかりませんでした。');
+                    document.getElementById('tab-content-condition').style.display = 'block';
+                    document.querySelector('.tabs').style.display = 'flex';
+                    document.getElementById('loading-area').style.display = 'none';
+                    return;
+                }
+
+                data.results.forEach((cand, idx) => {
+                    const uiName = `${cand.facility_name} (${cand.location})`;
+                    if (!apiResults[uiName]) {
+                        apiResults[uiName] = [];
+                        extractedNames.push(uiName);
+                    }
+                    apiResults[uiName].push(cand);
+                });
+
+                renderConfirmationTable(extractedNames);
+
+                document.getElementById('step1').style.display = 'none';
+                document.getElementById('step2').style.display = 'block';
+
+            } catch (error) {
+                alert(`検索エラー: ${error.message}`);
+                document.getElementById('tab-content-condition').style.display = 'block';
+                document.querySelector('.tabs').style.display = 'flex';
+                document.getElementById('loading-area').style.display = 'none';
+            }
+        }
+
+        function exportCSV() {
+            const selects = document.querySelectorAll('.candidate-select');
+            const csvRows = [];
+
+            if (window.currentSearchSummary) {
+                csvRows.push(`"【検索条件】 ${window.currentSearchSummary}"`);
+            }
+
+            // headers
+            csvRows.push(['施設種類', '都道府県/市区町村', '管理者', '路線名', '施設名', '橋長(m)', '幅員(m)', '判定区分'].join(','));
+
+            selects.forEach(select => {
+                const name = select.dataset.bridgeName;
+                const selectedIdx = parseInt(select.value, 10);
+
+                if (selectedIdx >= 0) {
+                    const cand = apiResults[name][selectedIdx];
+                    if (cand) {
+                        const hantei = cand.feature && cand.feature.properties ? cand.feature.properties.RSDB_tenken_kiroku_hantei_kubun : '';
+                        const row = [
+                            `"${cand.facility_type}"`,
+                            `"${cand.location || ''}"`,
+                            `"${cand.kanrisya || ''}"`,
+                            `"${cand.rosen || ''}"`,
+                            `"${cand.facility_name || ''}"`,
+                            `"${cand.bridge_length || ''}"`,
+                            `"${cand.bridge_width || ''}"`,
+                            `"${hantei || ''}"`
+                        ];
+                        csvRows.push(row.join(','));
+                    }
+                }
+            });
+
+            if (csvRows.length === 1) {
+                alert('出力するデータがありません。');
+                return;
+            }
+
+            const csvContent = "\uFEFF" + csvRows.join('\n'); // Add BOM for Excel
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'search_results.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
 
         // Template Download
         function downloadTemplate() {
@@ -492,6 +797,8 @@
         }
 
         async function fetchCandidates(names) {
+            window.currentSearchSummary = ''; // Clear for file search mode
+
             const prefCode = document.getElementById('pref-select').value;
             const facilityType = document.getElementById('facility-type-select').value;
             let endpoints = facilityType === 'all'
@@ -520,6 +827,11 @@
             tbody.innerHTML = '';
 
             document.getElementById('total-count-badge').textContent = `抽出: ${names.length}件`;
+
+            document.getElementById('search-summary-box').style.display = window.currentSearchSummary ? 'block' : 'none';
+            if (window.currentSearchSummary) {
+                document.getElementById('search-summary-text').textContent = window.currentSearchSummary;
+            }
 
             names.forEach(name => {
                 const candidates = apiResults[name] || [];

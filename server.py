@@ -28,11 +28,24 @@ class RequestHandler(SimpleHTTPRequestHandler):
             self.handle_extract_api()
         elif self.path == '/api/search':
             self.handle_search_api()
+        elif self.path == '/api/condition_search':
+            self.handle_condition_search_api()
         elif self.path == '/api/export':
             self.handle_export_api()
         else:
             self.send_error(404, "Endpoint not found")
             
+    @staticmethod
+    def flatten_dict(d, parent_key='', sep='_'):
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(RequestHandler.flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
     def extract_text_from_pdf(self, file_data):
         doc = fitz.open(stream=file_data, filetype="pdf")
         text = ""
@@ -209,17 +222,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                                     }
                                     
                                     # Flatten all other attributes into properties so they appear in QGIS
-                                    def flatten_dict(d, parent_key='', sep='_'):
-                                        items = []
-                                        for k, v in d.items():
-                                            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                                            if isinstance(v, dict):
-                                                items.extend(flatten_dict(v, new_key, sep=sep).items())
-                                            else:
-                                                items.append((new_key, v))
-                                        return dict(items)
-                                        
-                                    flat_item = flatten_dict(item)
+                                    flat_item = RequestHandler.flatten_dict(item)
                                     for k, v in flat_item.items():
                                         if k not in properties:
                                             properties[k] = v
@@ -257,6 +260,238 @@ class RequestHandler(SimpleHTTPRequestHandler):
                         print(f"Error fetching {name} from {ep}: {e}")
             
             # Return JSON instead of ZIP
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            response_data = json.dumps({"results": search_results}, ensure_ascii=False)
+            self.wfile.write(response_data.encode('utf-8'))
+            
+        except Exception as e:
+            self.send_error(500, f"Server Error: {str(e)}")
+
+    def handle_condition_search_api(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            request_json = json.loads(post_data)
+            
+            endpoints = request_json.get("endpoints", ["bridges"])
+            pref_code = request_json.get("pref_code", "")
+            conditions = request_json.get("conditions", {})
+            
+            print(f"DEBUG CONDITIONS: {conditions}")
+
+            if not endpoints or not pref_code:
+                self.send_error(400, "Endpoints and pref_code are required")
+                return
+
+            search_results = []
+            
+            for ep in endpoints:
+                offset = 0
+                limit = 1000
+                total_count = None
+                
+                while True:
+                    params = {'pref': pref_code, 'limit': limit, 'offset': offset}
+                    query = urllib.parse.urlencode(params)
+                    url = f"https://road-structures-db.mlit.go.jp/xROAD/api/v1/{ep}?{query}"
+                    
+                    req = urllib.request.Request(url)
+                    try:
+                        with urllib.request.urlopen(req) as res:
+                            body = res.read()
+                            data = json.loads(body.decode('utf-8'))
+                            
+                            if total_count is None:
+                                total_count = data.get('resultset', {}).get('count', 0)
+                                if total_count == 0:
+                                    break
+                                    
+                            results = data.get('result', [])
+                            if not results:
+                                break
+                                
+                            for item in results:
+                                flat_item = RequestHandler.flatten_dict(item)
+                                
+                                syogen = item.get('syogen', {})
+                                tenken = item.get('tenken', {})
+                                gyousei = syogen.get("gyousei_kuiki", {})
+                                ichi_data = syogen.get("ichi", {})
+                                
+                                item_pref = str(gyousei.get("todoufuken_mei") or ichi_data.get("todofuken_meisyou", ""))
+                                item_city = str(gyousei.get("shikuchouson_mei") or ichi_data.get("shikutyouson_meisyou", "")).lower()
+                                item_facility = str(syogen.get("shisetsu", {}).get("meisyou", "不明")).lower()
+                                item_kanrisya = str(syogen.get("kanrisya", {}).get("meisyou", "")).lower()
+                                item_rosen = str(syogen.get("rosen", {}).get("meisyou", "")).lower()
+                                
+                                # Filtering logic
+                                match = True
+                                
+                                # 1. Generic keywords (search across all flattened values)
+                                kw_str = conditions.get("keyword", "").strip()
+                                if kw_str:
+                                    keywords = [k.strip() for k in kw_str.split() if k.strip()]
+                                    
+                                    # Enrich search text with Japanese labels attached to their values
+                                    enriched_parts = []
+                                    # Add all raw values
+                                    for v in flat_item.values():
+                                        if v is not None:
+                                            enriched_parts.append(str(v).lower())
+                                            
+                                    # Add specific Japanese labels next to their values
+                                    label_mapping = {
+                                        "syogen_kyouchou": "橋長",
+                                        "syogen_fukuin": "幅員",
+                                        "tenken_kiroku_hantei_kubun": "判定区分",
+                                        "syogen_kasetsu_nendo": "架設",
+                                        "syogen_rosen_meisyou": "路線名",
+                                        "syogen_kanrisya_meisyou": "管理者",
+                                        "syogen_ichi_shikutyouson_meisyou": "市区町村",
+                                        "syogen_ichi_todofuken_meisyou": "都道府県",
+                                        "syogen_shisetsu_meisyou": "施設名"
+                                    }
+                                    
+                                    for flat_k, flat_v in flat_item.items():
+                                        if flat_v is None:
+                                            continue
+                                        val_str = str(flat_v).lower()
+                                        for key_suffix, label in label_mapping.items():
+                                            if flat_k.endswith(key_suffix):
+                                                enriched_parts.append(f"{label} {val_str}")
+                                                enriched_parts.append(f"{label}{val_str}")
+                                                
+                                    all_values_str = " ".join(enriched_parts)
+                                    
+                                    for kw in keywords:
+                                        if kw.lower() not in all_values_str:
+                                            match = False
+                                            break
+                                            
+                                if not match:
+                                    continue
+                                    
+                                # 2. Specific field conditions (partial match)
+                                cond_city = conditions.get("city", "").strip().lower()
+                                if cond_city and cond_city not in item_city:
+                                    continue
+                                    
+                                cond_rosen = conditions.get("rosen", "").strip().lower()
+                                if cond_rosen and cond_rosen not in item_rosen:
+                                    continue
+                                    
+                                cond_kanrisya = conditions.get("kanrisya", "").strip().lower()
+                                if cond_kanrisya and cond_kanrisya not in item_kanrisya:
+                                    continue
+                                    
+                                cond_facility = conditions.get("facility_name", "").strip().lower()
+                                if cond_facility and cond_facility not in item_facility:
+                                    continue
+                                    
+                                cond_hantei = str(conditions.get("hantei_kubun", "")).strip()
+                                if cond_hantei:
+                                    # Handle case where tenken is a list vs dict
+                                    item_hantei = ""
+                                    if isinstance(tenken, list):
+                                        for t in tenken:
+                                            if isinstance(t, dict):
+                                                hk = t.get("kiroku", {}).get("hantei_kubun", "")
+                                                if hk:
+                                                    item_hantei = str(hk)
+                                                    break
+                                    elif isinstance(tenken, dict):
+                                        item_hantei = str(tenken.get("kiroku", {}).get("hantei_kubun", ""))
+                                        
+                                    if cond_hantei != item_hantei:
+                                        match = False
+                                        
+                                if not match:
+                                    continue
+                                    
+                                # 3. Numeric range conditions (e.g. length, width)
+                                length_min = conditions.get("length_min")
+                                length_max = conditions.get("length_max")
+                                if (length_min and str(length_min).strip()) or (length_max and str(length_max).strip()):
+                                    try:
+                                        item_len = float(flat_item.get("syogen_kyouchou", 0))
+                                        if length_min and str(length_min).strip() and item_len < float(length_min):
+                                            match = False
+                                        if length_max and str(length_max).strip() and item_len > float(length_max):
+                                            match = False
+                                    except (ValueError, TypeError):
+                                        match = False
+                                        
+                                if not match:
+                                    continue
+                                
+                                width_min = conditions.get("width_min")
+                                width_max = conditions.get("width_max")
+                                if (width_min and str(width_min).strip()) or (width_max and str(width_max).strip()):
+                                    try:
+                                        item_width = float(flat_item.get("syogen_fukuin", 0))
+                                        if width_min and str(width_min).strip() and item_width < float(width_min):
+                                            match = False
+                                        if width_max and str(width_max).strip() and item_width > float(width_max):
+                                            match = False
+                                    except (ValueError, TypeError):
+                                        match = False
+                                        
+                                if not match:
+                                    continue
+                                
+                                # If all conditions met, format feature
+                                syogen = item.get('syogen', {})
+                                tenken = item.get('tenken', {})
+                                ido = syogen.get('ichi', {}).get('ido')
+                                keido = syogen.get('ichi', {}).get('keido')
+                                
+                                if ido is not None and keido is not None:
+                                    properties = {
+                                        "DPF_title": syogen.get("shisetsu", {}).get("meisyou", "不明"),
+                                        "RSDB_tenken_kiroku_hantei_kubun": tenken.get("kiroku", {}).get("hantei_kubun", ""),
+                                        "kasetsu_nendo": syogen.get("kasetsu_nendo", ""),
+                                        "fukuin": syogen.get("fukuin", ""),
+                                        "kyouchou": syogen.get("kyouchou", "")
+                                    }
+                                    
+                                    for k, v in flat_item.items():
+                                        if k not in properties:
+                                            properties[k] = v
+                                            
+                                    feature = {
+                                        "type": "Feature",
+                                        "geometry": {
+                                            "type": "Point",
+                                            "coordinates": [keido, ido]
+                                        },
+                                        "properties": properties
+                                    }
+                                    
+                                    candidate = {
+                                        "facility_id": item.get("shisetsu_id", ""),
+                                        "facility_type": ep,
+                                        "facility_name": properties["DPF_title"],
+                                        "location": f'{syogen.get("ichi", {}).get("todofuken_meisyou", "")}{syogen.get("ichi", {}).get("shikutyouson_meisyou", "")}',
+                                        "bridge_length": syogen.get("kyouchou", ""),
+                                        "bridge_width": syogen.get("fukuin", ""),
+                                        "kanrisya": syogen.get("kanrisya", {}).get("meisyou", ""),
+                                        "rosen": syogen.get("rosen", {}).get("meisyou", ""),
+                                        "feature": feature
+                                    }
+                                    search_results.append(candidate)
+                                    
+                            offset += limit
+                            if offset >= total_count:
+                                break
+                    except Exception as e:
+                        print(f"Error fetching from {ep} at offset {offset}: {e}")
+                        break
+                        
+            # Return JSON
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
