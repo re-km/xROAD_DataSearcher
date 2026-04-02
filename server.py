@@ -19,6 +19,20 @@ import fitz  # PyMuPDF
 # API Endpoint
 XROAD_API_URL = "https://road-structures-db.mlit.go.jp/xROAD/api/v1/bridges"
 
+def load_api_key():
+    """appsettings.json → 環境変数 GEMINI_API_KEY の優先順で API キーを取得"""
+    settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "appsettings.json")
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+            key = settings.get("gemini_api_key", "").strip()
+            if key:
+                return key
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: appsettings.json の読み込みに失敗しました: {e}")
+    return os.environ.get("GEMINI_API_KEY", "")
+
 # Target QML file
 QML_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style_sample.qml")
 
@@ -86,12 +100,12 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 raise ValueError("ファイルからテキストを抽出できませんでした。")
 
             # Check if API Key is set
-            import os
-            if not os.environ.get("GEMINI_API_KEY"):
-                raise ValueError("GEMINI_API_KEYが設定されていません。AI機能を使用するには環境変数にAPIキーを設定してください。")
+            api_key = load_api_key()
+            if not api_key:
+                raise ValueError("Gemini APIキーが設定されていません。appsettings.json に gemini_api_key を設定するか、環境変数 GEMINI_API_KEY を設定してください。")
 
             # Call Gemini
-            client = genai.Client()
+            client = genai.Client(api_key=api_key)
             prompt = f"""
 以下のテキストデータから、「{facility_type_jp}」の名前と推測される文字列をすべて抽出し、JSONの配列形式で出力してください。
 例えば、「158-上半原-003」のような記号と数字の組み合わせや、橋の名前とは一見思えない数字だけの羅列であっても、文脈上施設名であれば抽出してください。
