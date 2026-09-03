@@ -632,7 +632,7 @@
     }
     function applyPrintPageSize() {
         const style = document.getElementById('xrds-print-page-style');
-        const pageSize = printPaper === 'A3' ? '420mm 297mm' : '297mm 210mm'; if (style) { const canvasHeight = printPaper === 'A3' ? '260mm' : '175mm'; style.textContent = '@page { size: ' + pageSize + '; margin: 10mm; } @media print { body.xrds-print-mode .map-workspace-canvas { height: ' + canvasHeight + ' !important; min-height: ' + canvasHeight + ' !important; } }'; }
+        if (style) { style.textContent = '@page { margin: 0; } @media print { body.xrds-print-mode .map-workspace-canvas { height: 100vh !important; min-height: 100vh !important; } }'; }
     }
     function updatePrintHeader() {
         const header = document.getElementById('map-print-header');
@@ -649,6 +649,7 @@
         const exitButton = document.getElementById('map-print-exit-btn');
         const headerWrap = document.getElementById('map-print-header-wrap');
         const paneTabsWrap = document.getElementById('map-print-pane-tabs-wrap');
+        const printHelp = document.getElementById('map-print-help');
         if (paperWrap) paperWrap.hidden = !printMode;
         if (autoButton) autoButton.hidden = !printMode;
         if (saveButton) saveButton.hidden = !printMode;
@@ -657,6 +658,7 @@
         if (jpegButton) jpegButton.hidden = !printMode;
         if (headerWrap) headerWrap.hidden = !printMode;
         if (paneTabsWrap) paneTabsWrap.hidden = !printMode;
+        if (printHelp) printHelp.hidden = !printMode;
         const printHeaderToggle = document.getElementById('map-print-header-toggle');
         const printPaneTabsToggle = document.getElementById('map-print-pane-tabs-toggle');
         if (printHeaderToggle) printHeaderToggle.checked = printDisplayOptions.header;

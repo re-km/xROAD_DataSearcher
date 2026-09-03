@@ -126,6 +126,12 @@ def get_style_rules():
         return _STYLE_FALLBACK
 
 class RequestHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        static_path = urllib.parse.urlparse(self.path).path
+        if static_path in ('/', '/index.html') or static_path.endswith('/map.js'):
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+            self.send_header('Pragma', 'no-cache')
+        super().end_headers()
     def _check_auth(self):
         """appsettings.jsonのauthが設定されている場合のみBasic認証を要求する（共有ユーザー名+共有パスワード方式）"""
         settings = load_settings()

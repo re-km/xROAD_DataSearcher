@@ -288,13 +288,13 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=23/);
+    assert.match(indexHtml, /static\/map\.js\?v=24/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);
     assert.match(indexHtml, /id="map-equipment-border-toggle"/);
     assert.match(indexHtml, /id="map-print-header-toggle"/);
     assert.match(indexHtml, /id="map-print-pane-tabs-toggle"/);
     assert.match(indexHtml, /id="map-print-jpeg-btn"/);
-    assert.match(indexHtml, /@page \{ size: 297mm 210mm;/);
+    assert.match(indexHtml, /@page \{ margin: 0;/);
     assert.match(source, /canvas\.toBlob/);
     assert.deepEqual(JSON.parse(JSON.stringify(test.getPrintPaperSpec('A4'))), { cssWidth: '297mm', cssHeight: '210mm', widthMm: 297, heightMm: 210, widthPx: 2400, heightPx: 1697 });
     assert.deepEqual(JSON.parse(JSON.stringify(test.getPrintPaperSpec('A3'))), { cssWidth: '420mm', cssHeight: '297mm', widthMm: 420, heightMm: 297, widthPx: 3394, heightPx: 2400 });
