@@ -345,9 +345,9 @@
         leafletMap.getPane('xrds-leader-pane').style.zIndex = '350';
         leafletMap.getPane('xrds-leader-pane').style.pointerEvents = 'none';
         const attribution = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>';
-        const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', { attribution, maxZoom: 18 });
-        const standard = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution, maxZoom: 18 });
-        const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', { attribution, maxZoom: 18 });
+        const pale = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', { attribution, maxZoom: 18, crossOrigin: true });
+        const standard = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', { attribution, maxZoom: 18, crossOrigin: true });
+        const photo = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', { attribution, maxZoom: 18, crossOrigin: true });
         pale.addTo(leafletMap);
         L.control.layers({ '淡色地図': pale, '標準地図': standard, '航空写真': photo }, {}, { collapsed: true }).addTo(leafletMap);
         aggregateLayer = L.layerGroup().addTo(leafletMap);
@@ -381,6 +381,7 @@
         document.getElementById('map-print-auto-btn')?.addEventListener('click', resetPrintLabelAnchors);
         document.getElementById('map-print-save-btn')?.addEventListener('click', savePrintLayouts);
         document.getElementById('map-print-btn')?.addEventListener('click', printCurrentMap);
+        document.getElementById('map-print-jpeg-btn')?.addEventListener('click', exportCurrentMapJpeg);
         document.getElementById('map-print-exit-btn')?.addEventListener('click', () => setPrintMode(false));
         window.addEventListener?.('beforeprint', beforePrint);
         window.addEventListener?.('afterprint', afterPrint);
@@ -421,9 +422,217 @@
         applyPrintPageSize();
         updatePrintHeader();
     }
+    const PRINT_OUTPUT_SPECS = Object.freeze({
+        A4: { cssWidth: '297mm', cssHeight: '210mm', widthMm: 297, heightMm: 210, widthPx: 2400, heightPx: 1697 },
+        A3: { cssWidth: '420mm', cssHeight: '297mm', widthMm: 420, heightMm: 297, widthPx: 3394, heightPx: 2400 },
+    });
+    function getPrintPaperSpec(paper = printPaper) {
+        return PRINT_OUTPUT_SPECS[paper] || PRINT_OUTPUT_SPECS.A4;
+    }
+    function mapRectToPrint(rect, mapRect, target) {
+        const scaleX = target.width / mapRect.width;
+        const scaleY = target.height / mapRect.height;
+        return {
+            left: target.left + (rect.left - mapRect.left) * scaleX,
+            top: target.top + (rect.top - mapRect.top) * scaleY,
+            width: rect.width * scaleX,
+            height: rect.height * scaleY,
+        };
+    }
+    function cssNumber(value, fallback = 0) {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    function drawRoundedRect(context, left, top, width, height, radius) {
+        const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+        context.beginPath();
+        context.moveTo(left + safeRadius, top);
+        context.arcTo(left + width, top, left + width, top + height, safeRadius);
+        context.arcTo(left + width, top + height, left, top + height, safeRadius);
+        context.arcTo(left, top + height, left, top, safeRadius);
+        context.arcTo(left, top, left + width, top, safeRadius);
+        context.closePath();
+    }
+    function drawPrintTiles(context, mapContainer, mapRect, target) {
+        const tiles = [...mapContainer.querySelectorAll('img.leaflet-tile')].filter(tile => tile.complete && tile.naturalWidth > 0);
+        const scaleX = target.width / mapRect.width;
+        const scaleY = target.height / mapRect.height;
+        tiles.forEach(tile => {
+            const rect = tile.getBoundingClientRect();
+            try {
+                context.drawImage(tile, target.left + (rect.left - mapRect.left) * scaleX, target.top + (rect.top - mapRect.top) * scaleY, rect.width * scaleX, rect.height * scaleY);
+            } catch (error) {
+                throw new Error('地図タイルをJPEGに含められません。地図を再読み込みしてから、もう一度お試しください。');
+            }
+        });
+    }
+    function drawPrintVectorLayers(context, mapContainer, mapRect, target) {
+        if (typeof Path2D !== 'function') return;
+        const scaleX = target.width / mapRect.width;
+        const scaleY = target.height / mapRect.height;
+        mapContainer.querySelectorAll('.leaflet-overlay-pane svg').forEach(svg => {
+            const svgRect = svg.getBoundingClientRect();
+            svg.querySelectorAll('path').forEach(path => {
+                const definition = path.getAttribute('d');
+                if (!definition) return;
+                let shape;
+                try { shape = new Path2D(definition); } catch (error) { return; }
+                const style = window.getComputedStyle?.(path);
+                context.save();
+                context.translate(target.left + (svgRect.left - mapRect.left) * scaleX, target.top + (svgRect.top - mapRect.top) * scaleY);
+                context.scale(scaleX, scaleY);
+                context.globalAlpha = cssNumber(style?.opacity, 1);
+                context.lineWidth = cssNumber(style?.strokeWidth, 1);
+                if (style?.fill && style.fill !== 'none' && style.fill !== 'transparent') { context.fillStyle = style.fill; context.fill(shape); }
+                if (style?.stroke && style.stroke !== 'none' && style.stroke !== 'transparent') { context.strokeStyle = style.stroke; context.stroke(shape); }
+                context.restore();
+            });
+        });
+    }
+    function drawPrintLabel(context, label, mapRect, target) {
+        const rect = label.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const destination = mapRectToPrint(rect, mapRect, target);
+        const style = window.getComputedStyle?.(label) || {};
+        const scaleX = target.width / mapRect.width;
+        const scaleY = target.height / mapRect.height;
+        drawRoundedRect(context, destination.left, destination.top, destination.width, destination.height, 5 * Math.min(scaleX, scaleY));
+        context.fillStyle = style.backgroundColor || '#ffffff';
+        context.fill();
+        context.lineWidth = Math.max(1, cssNumber(style.borderTopWidth, 1) * Math.min(scaleX, scaleY));
+        context.strokeStyle = style.borderTopColor || '#64748b';
+        context.stroke();
+        const paddingLeft = cssNumber(style.paddingLeft, 7) * scaleX;
+        context.font = (style.fontWeight || '600') + ' ' + (cssNumber(style.fontSize, 12) * scaleY) + 'px ' + (style.fontFamily || 'sans-serif');
+        context.textBaseline = 'middle';
+        context.fillStyle = style.color || '#1f2937';
+        const title = [...label.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent.trim()).join(' ') || label.textContent.trim();
+        context.fillText(title, destination.left + paddingLeft, destination.top + destination.height / 2);
+        const badge = label.querySelector('.xrds-schedule-badge');
+        if (badge) {
+            const badgeDestination = mapRectToPrint(badge.getBoundingClientRect(), mapRect, target);
+            const badgeStyle = window.getComputedStyle?.(badge) || {};
+            drawRoundedRect(context, badgeDestination.left, badgeDestination.top, badgeDestination.width, badgeDestination.height, 4 * Math.min(scaleX, scaleY));
+            context.fillStyle = badgeStyle.backgroundColor || 'rgba(248,250,252,.9)';
+            context.fill();
+            context.lineWidth = Math.max(1, cssNumber(badgeStyle.borderTopWidth, 1) * Math.min(scaleX, scaleY));
+            context.strokeStyle = badgeStyle.borderTopColor || '#64748b';
+            context.stroke();
+            context.font = (badgeStyle.fontWeight || '700') + ' ' + (cssNumber(badgeStyle.fontSize, 10) * scaleY) + 'px ' + (badgeStyle.fontFamily || 'sans-serif');
+            context.fillStyle = badgeStyle.color || '#334155';
+            context.fillText(badge.textContent.trim(), badgeDestination.left + 4 * scaleX, badgeDestination.top + badgeDestination.height / 2);
+        }
+    }
+    function drawPrintHeader(context, target) {
+        if (!printDisplayOptions.header) return;
+        const spec = getPrintPaperSpec();
+        const headerHeight = target.width / spec.widthMm * 9;
+        const header = document.getElementById('map-print-header');
+        const title = header?.querySelector('strong')?.textContent?.trim() || '地図管理';
+        const detail = header?.querySelector('span')?.textContent?.trim() || ('表示中の業務なし / ' + printPaper + '横');
+        context.fillStyle = '#ffffff';
+        context.fillRect(target.left, target.top, target.width, headerHeight);
+        context.textBaseline = 'middle';
+        context.fillStyle = '#111827';
+        context.font = '700 ' + (target.width / spec.widthMm * 11) + 'px sans-serif';
+        context.fillText(title, target.left, target.top + headerHeight * .42);
+        context.fillStyle = '#475569';
+        context.font = '400 ' + (target.width / spec.widthMm * 9) + 'px sans-serif';
+        const detailWidth = context.measureText(detail).width;
+        context.fillText(detail, target.left + target.width - detailWidth, target.top + headerHeight * .42);
+    }
+    function drawPrintPaneTabs(context, mapContainer, mapRect, target) {
+        if (!printDisplayOptions.paneTabs) return;
+        const buttons = mapContainer.parentElement?.querySelectorAll('.map-pane-toggle') || [];
+        const scaleX = target.width / mapRect.width;
+        const scaleY = target.height / mapRect.height;
+        [...buttons].forEach(button => {
+            const rect = button.getBoundingClientRect();
+            const destination = mapRectToPrint(rect, mapRect, target);
+            const style = window.getComputedStyle?.(button) || {};
+            drawRoundedRect(context, destination.left, destination.top, destination.width, destination.height, 9 * Math.min(scaleX, scaleY));
+            context.fillStyle = style.backgroundColor || 'rgba(255,255,255,.96)';
+            context.fill();
+            context.lineWidth = Math.max(1, cssNumber(style.borderTopWidth, 1) * Math.min(scaleX, scaleY));
+            context.strokeStyle = style.borderTopColor || '#b8c5d8';
+            context.stroke();
+            context.fillStyle = style.color || '#334155';
+            context.font = (cssNumber(style.fontSize, 25) * scaleY) + 'px sans-serif';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(button.textContent.trim(), destination.left + destination.width / 2, destination.top + destination.height / 2);
+            context.textAlign = 'start';
+        });
+    }
+    function waitForPrintTiles(mapContainer) {
+        const pending = [...mapContainer.querySelectorAll('img.leaflet-tile')]
+            .filter(tile => !tile.complete)
+            .map(tile => new Promise(resolve => {
+                const finish = () => resolve();
+                tile.addEventListener('load', finish, { once: true });
+                tile.addEventListener('error', finish, { once: true });
+                window.setTimeout(finish, 1500);
+            }));
+        return Promise.all(pending);
+    }
+    async function renderPrintJpegCanvas() {
+        const mapContainer = leafletMap?.getContainer?.() || document.getElementById('leaflet-map');
+        if (!mapContainer) throw new Error('地図表示が見つかりません。');
+        const mapRect = mapContainer.getBoundingClientRect();
+        if (!mapRect.width || !mapRect.height) throw new Error('地図表示のサイズを取得できません。');
+        await waitForPrintTiles(mapContainer);
+        const spec = getPrintPaperSpec();
+        const canvas = document.createElement('canvas');
+        canvas.width = spec.widthPx;
+        canvas.height = spec.heightPx;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('JPEG出力用のキャンバスを作成できません。');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        const margin = canvas.width * 10 / spec.widthMm;
+        const target = { left: margin, top: margin, width: canvas.width - margin * 2, height: canvas.height - margin * 2 };
+        drawPrintTiles(context, mapContainer, mapRect, target);
+        drawPrintVectorLayers(context, mapContainer, mapRect, target);
+        mapContainer.querySelectorAll('.xrds-label-text').forEach(label => drawPrintLabel(context, label, mapRect, target));
+        drawPrintHeader(context, target);
+        drawPrintPaneTabs(context, mapContainer, mapRect, target);
+        return canvas;
+    }
+    function canvasToJpeg(canvas) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('JPEGデータを作成できません。')), 'image/jpeg', .92);
+        });
+    }
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+    async function exportCurrentMapJpeg() {
+        if (!printMode) setPrintMode(true);
+        const button = document.getElementById('map-print-jpeg-btn');
+        if (button) { button.disabled = true; button.textContent = 'JPEG作成中...'; }
+        try {
+            beforePrint();
+            const canvas = await renderPrintJpegCanvas();
+            const blob = await canvasToJpeg(canvas);
+            const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            downloadBlob(blob, '地図_' + printPaper + '_' + stamp + '.jpg');
+            status(printPaper + '横のJPEGを出力しました。');
+        } catch (error) {
+            alert('JPEG出力に失敗しました。' + String.fromCharCode(10) + error.message);
+        } finally {
+            updatePrintControls();
+        }
+    }
     function applyPrintPageSize() {
         const style = document.getElementById('xrds-print-page-style');
-        if (style) { const canvasHeight = printPaper === 'A3' ? '260mm' : '175mm'; style.textContent = '@page { size: ' + printPaper + ' landscape; margin: 10mm; } @media print { body.xrds-print-mode .map-workspace-canvas { height: ' + canvasHeight + ' !important; min-height: ' + canvasHeight + ' !important; } }'; }
+        const pageSize = printPaper === 'A3' ? '420mm 297mm' : '297mm 210mm'; if (style) { const canvasHeight = printPaper === 'A3' ? '260mm' : '175mm'; style.textContent = '@page { size: ' + pageSize + '; margin: 10mm; } @media print { body.xrds-print-mode .map-workspace-canvas { height: ' + canvasHeight + ' !important; min-height: ' + canvasHeight + ' !important; } }'; }
     }
     function updatePrintHeader() {
         const header = document.getElementById('map-print-header');
@@ -436,6 +645,7 @@
         const autoButton = document.getElementById('map-print-auto-btn');
         const saveButton = document.getElementById('map-print-save-btn');
         const printButton = document.getElementById('map-print-btn');
+        const jpegButton = document.getElementById('map-print-jpeg-btn');
         const exitButton = document.getElementById('map-print-exit-btn');
         const headerWrap = document.getElementById('map-print-header-wrap');
         const paneTabsWrap = document.getElementById('map-print-pane-tabs-wrap');
@@ -444,6 +654,7 @@
         if (saveButton) saveButton.hidden = !printMode;
         if (printButton) printButton.hidden = !printMode;
         if (exitButton) exitButton.hidden = !printMode;
+        if (jpegButton) jpegButton.hidden = !printMode;
         if (headerWrap) headerWrap.hidden = !printMode;
         if (paneTabsWrap) paneTabsWrap.hidden = !printMode;
         const printHeaderToggle = document.getElementById('map-print-header-toggle');
