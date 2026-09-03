@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xROAD構造物検索ツール 使い方ガイド</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success-color: #10b981;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-light: #64748b;
+            --border-color: #e2e8f0;
+            --border-radius: 12px;
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Yu Gothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 36px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0 0 8px;
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 30px 20px 60px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            padding: 28px 32px;
+            margin-bottom: 24px;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        .step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .note-box {
+            background: #eff6ff;
+            border-left: 4px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 14px 0;
+            font-size: 14px;
+        }
+
+        .warn-box {
+            background: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 14px 0;
+            font-size: 14px;
+        }
+
+        .tag {
+            display: inline-block;
+            background: #e2e8f0;
+            color: var(--text-main);
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            margin: 2px 4px 2px 0;
+        }
+
+        ol,
+        ul {
+            padding-left: 22px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+        }
+
+        th,
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f8fafc;
+            color: var(--text-light);
+        }
+
+        .color-dot {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        .faq-q {
+            font-weight: 700;
+            color: var(--primary-hover);
+            margin-bottom: 4px;
+        }
+
+        .faq-item {
+            border-top: 1px solid var(--border-color);
+            padding: 14px 0;
+        }
+
+        .faq-item:first-of-type {
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .toc {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .toc a {
+            background: #f1f5f9;
+            color: var(--primary-hover);
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .toc a:hover {
+            background: #dbeafe;
+        }
+
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .card {
+                box-shadow: none;
+                border: 1px solid var(--border-color);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>xROAD構造物検索ツール 使い方ガイド</h1>
+        <p>橋やトンネルなどの施設を検索・地図確認・QGIS出力するための利用者向けマニュアルです</p>
+    </div>
+
+    <div class="container">
+
+        <div class="card">
+            <p>このツールは、橋やトンネルなどの施設を名前や条件で検索し、<strong>地図上で確認</strong>したり、<strong>QGIS用のデータ</strong>として出力したりできるツールです。インストールは不要で、ブラウザだけで使えます。</p>
+            <div class="toc">
+                <a href="#step0">0. 使い始める前に</a>
+                <a href="#step1">1. 検索する</a>
+                <a href="#step2">2. 結果を確認</a>
+                <a href="#step3">3. 地図に保存</a>
+                <a href="#step4">4. QGIS用データ</a>
+                <a href="#step5">5. 地図管理タブ</a>
+                <a href="#faq">よくある質問</a>
+            </div>
+        </div>
+
+        <div class="card" id="step0">
+            <h2><span class="step-num">0</span>使い始める前に</h2>
+            <p>管理者（このツールを立ち上げている人）から、次の2つを教えてもらってください。</p>
+            <ul>
+                <li><strong>アクセス先のURL</strong>（例: <code>http://（管理者のPC名 または IPアドレス）:8080</code>）</li>
+                <li><strong>パスワード</strong>（設定されている場合のみ。ブラウザで最初にアクセスすると、ユーザー名とパスワードの入力を求められます。ユーザー名は <code>rebircle</code>、パスワードは管理者から聞いた共通パスワードを入力してください）</li>
+            </ul>
+            <div class="warn-box">
+                管理者のPCの電源が入っていて、ツールが起動している間だけ使えます。「つながらない」ときは、まず管理者にPCとツールが起動しているか確認してもらってください。パスワードはメール・チャットへの転載や共有フォルダへの保存を避け、管理者から安全な経路で受け取ってください。このURLは社内ネットワーク専用で、インターネットへ公開しません。
+            </div>
+            <p>ブラウザでURLを開くと、画面上部に3つのタブが表示されます。</p>
+            <p>
+                <span class="tag">ファイルから検索</span>施設名の一覧（PDF・Excel・CSV）から一括検索<br>
+                <span class="tag">条件から検索</span>都道府県や判定区分などの条件で検索<br>
+                <span class="tag">地図管理</span>保存済みの地図データを閲覧・編集
+            </p>
+        </div>
+
+        <div class="card" id="step1">
+            <h2><span class="step-num">1</span>施設を検索する</h2>
+            <p><strong>A. ファイルから検索する場合</strong></p>
+            <ol>
+                <li>「1. 共通設定」で対象の施設種類（橋梁・トンネルなど）と都道府県を選び、必要なら「市区町村の絞り込み」に市・区・町・村名を入力します。市区町村を指定する場合は都道府県の選択が必要です。</li>
+                <li>施設名が書かれたExcel・CSV・PDFファイルを、画面中央の枠にドラッグ＆ドロップします（テンプレートが欲しい場合は「施設検索テンプレート.xlsx をダウンロード」から取得できます）。</li>
+                <li>自動でxROAD APIから候補が検索されます。少し待つと、施設ごとの候補一覧が表示されます。</li>
+            </ol>
+            <p><strong>B. 条件から検索する場合</strong></p>
+            <ol>
+                <li>「条件から検索」タブに切り替えます。</li>
+                <li>都道府県は<strong>必須</strong>です（全国検索は件数が多すぎるため選べません）。</li>
+                <li>市区町村・管理者・路線名・施設名・判定区分・橋長・幅員など、わかる条件だけ入力して「条件で施設を検索する」を押します。</li>
+            </ol>
+        </div>
+
+        <div class="card" id="step2">
+            <h2><span class="step-num">2</span>検索結果を確認する</h2>
+            <ul>
+                <li>施設名ごとに候補が表示されます。同じ名前の施設が複数ある場合は、プルダウンから「市区町村・寸法・管理者・路線名」を見て、正しいものを選んでください。</li>
+                <li>該当する施設がない場合は「❌ この施設をマップから除外する」を選ぶと、出力から除外されます。</li>
+            </ul>
+            <p>内容を確認したら、次のどちらか、または両方を行います。</p>
+        </div>
+
+        <div class="card" id="step3">
+            <h2><span class="step-num">3</span>地図に保存する（おすすめ）</h2>
+            <p>あとで自分や他の人が見返せるように、検索結果を<strong>年度・業務名</strong>をつけて保存できます。</p>
+            <ol>
+                <li>結果一覧の下にある「<strong>地図管理に保存</strong>」の欄に、
+                    <ul>
+                        <li><strong>年度</strong>（例: <code>2025年度</code>。「2025」だけ入力しても自動的に「2025年度」に変換されます）</li>
+                        <li><strong>業務名</strong>（自由に入力。例: <code>〇〇地区橋梁点検</code>）</li>
+                    </ul>を入力します。
+                </li>
+                <li>「🗺️ 地図に保存」を押すと保存されます。</li>
+                <li>既存の業務へ追加する場合は、候補を選んで「<strong>既存業務に追加</strong>」を押します。地図管理で追加先業務の「編集」→右側の「選択した検索結果を追加」→「この業務を保存」の順に押してください。</li>
+                <li>画面で業務を読み込んだ後に保存内容が変わった場合は、最新内容を確認するメッセージが表示されます。ファイルの更新時刻だけが変わった場合は競合になりません。内容に心当たりがなければ、一度「地図管理」タブでその業務を読み込み直してください。</li>
+            </ol>
+            <div class="note-box">保存したデータは、サーバーが動いている限り誰でも「地図管理」タブから見られます。</div>
+        </div>
+
+        <div class="card" id="step4">
+            <h2><span class="step-num">4</span>QGIS用データが欲しい場合</h2>
+            <ol>
+                <li>結果一覧の「✅ QGIS用 地図（ZIP）を生成」を押すと、<code>search_results.zip</code> がダウンロードされます。</li>
+                <li>Zipを解凍すると、<code>search_results.geojson</code>（データ本体）と <code>search_results.qml</code>（色分け設定）が入っています。</li>
+                <li>この2つのファイルをQGISのレイヤパネルにドラッグ＆ドロップすると、判定区分ごとに色分けされたピンが地図上に表示されます。</li>
+            </ol>
+            <div class="note-box">
+                Zipをまだ「地図に保存」していない状態でダウンロードすると、「地図管理にはまだ保存されていません。保存しますか？」と確認されます。あとで見返したい場合は保存しておくことをおすすめします。
+            </div>
+            <p><strong>すでに保存済みの業務からZipを作りたいとき</strong>は、検索し直す必要はありません。「地図管理」タブの一覧から該当の業務の「QGIS用Zip生成」ボタンを押してください。</p>
+        </div>
+
+        <div class="card" id="step5">
+            <h2><span class="step-num">5</span>地図管理タブで管理・編集する</h2>
+            <ol>
+                <li>「地図管理」タブを開くと、画面全体が地図と管理パネルになります。左側には年度・業務の一覧、右側には選択した地点の詳細と編集欄が表示されます。</li>
+                <li>左側の業務で「<strong>地図に表示</strong>」を押すと、地図上にピンが表示されます。複数の業務を重ねて確認することもできます。</li>
+                <li>業務カードの「<strong>施設一覧を表示</strong>」で登録施設を開閉できます。施設名を押すと地図上の地点へ移動し、右側の「G」を押すと登録されている緯度・経度のGoogleマップを別タブで開きます。</li>
+                <li>管理したい業務の「<strong>編集</strong>」を押し、地図上の地点を選びます。</li>
+                <li>検索データにない地点は「<strong>空の地点を追加</strong>」を押して地図上の位置をクリックすると、属性が空の地点として作成できます。右ペインで表示名・進捗・使用機材・メモを入力してください。緯度・経度を直接入力して「入力した緯度経度へ移動」を押すか、入力欄で Enter キーを押して位置を調整することもできます。</li>
+                <li>右側で<strong>社内用の表示名・進捗・使用機材・メモ</strong>を編集できます。xROAD原本属性は「基本情報・所在地・管理／路線・諸元・点検」別に確認でき、属性名・値・元キーで絞り込めます。原本属性は直接変更しないため、元データを保ったまま運用メモを追加できます。</li>
+                <li>緯度・経度を入力するか、「地図をクリックして移動」を押して地図上の新しい位置をクリックすると、地点を補正できます。元の座標は記録されます。</li>
+                <li>編集後は必ず「<strong>この業務を保存</strong>」を押してください。この操作までは共有フォルダのデータは変更されません。</li>
+                <li>地点が多い縮小表示では、近い地点を丸印に集約して高速に表示しますが、施設ラベルと引出線は縮小時も配置します。ラベルは地点と他ラベルを避け、引出線同士の交差が最小になる候補位置へ移動します。画面内へ物理的に収まらない件数がある場合は地図下部に件数を表示するため、地図を拡大して確認してください。</li>
+                <li>左側の「判定区分フィルタ」で、表示したい判定区分だけに絞り込めます。業務ごとに「QGIS Zip」「削除」も使えます。削除データはゴミ箱（<code>_trash</code>）に移動します。</li>
+            </ol>
+
+            <h3 style="font-size:16px;">社内進捗と使用機材</h3>
+            <p>社内進捗は「未設定・準備中・準備完了・社内踏査済・点検済・調査済・完了」から選択します。使用機材は全候補が表示されるプルダウンから選び、「その他」を選ぶと自由入力できます。使用機材が未選択の施設は従来どおり1pxの黒枠、使用機材を設定した施設は4pxの色付き枠で表示され、左側の施設一覧にも同じ色の目印が付きます。</p>
+            <table>
+                <thead><tr><th>使用機材</th><th>ラベル枠線</th></tr></thead>
+                <tbody>
+                    <tr><td>橋梁点検車</td><td>ミントグリーン</td></tr>
+                    <tr><td>中型橋梁点検車</td><td>黄緑</td></tr>
+                    <tr><td>大型橋梁点検車</td><td>緑</td></tr>
+                    <tr><td>施設点検車</td><td>濃い緑</td></tr>
+                    <tr><td>高所作業車</td><td>薄いラベンダー</td></tr>
+                    <tr><td>その他（自由入力）</td><td>紫</td></tr>
+                </tbody>
+            </table>
+            <h3 style="font-size:16px;">色の意味（QGISと共通）</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>判定区分</th>
+                        <th>色</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td><span class="color-dot" style="background:#00bfff;"></span>青緑</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td><span class="color-dot" style="background:#ffff00;"></span>黄</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td><span class="color-dot" style="background:#ffa500;"></span>オレンジ</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td><span class="color-dot" style="background:#e61e1e;"></span>赤</td>
+                    </tr>
+                    <tr>
+                        <td>その他/未設定</td>
+                        <td><span class="color-dot" style="background:#ffffff; border-color:#94a3b8;"></span>白</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="font-size:14px; color:var(--text-light);">この配色は、QGISにZipを読み込んだときの見た目と同じになるように作られています。</p>
+        </div>
+
+        <div class="card" id="faq">
+            <h2>❓ よくある質問</h2>
+
+            <div class="faq-item">
+                <div class="faq-q">Q. ページを開くとユーザー名・パスワードを聞かれる</div>
+                <div>A. パスワードによる共有保護がかかっています。ユーザー名は <code>rebircle</code>、パスワードは管理者に確認してください。</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">Q. 「サーバーに接続できません」と表示される</div>
+                <div>A. 管理者のPCが起動していない、またはツールが起動していない可能性があります。管理者に確認してください。</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">Q. 保存しようとしたら「読み込んだ後に変更されています」と出た</div>
+                <div>A. 自分が読み込んだ後に、同じ業務のGeoJSON内容が変わった場合に出ます。地図管理で最新内容を読み込み直し、上書きしてよいか確認してから操作してください。同期処理で更新時刻だけが変わった場合には表示されません。</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">Q. 間違えて業務データを削除してしまった</div>
+                <div>A. 削除したデータは完全には消えず、保存場所の「ゴミ箱（<code>_trash</code>フォルダ）」に一定期間残ります。管理者に復旧を依頼してください。</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">Q. QGISは使わないが地図で見られればよい</div>
+                <div>A. 「地図に保存」だけしておけば、Zipをダウンロードしなくても「地図管理」タブから地図確認ができます。</div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+
+</html>

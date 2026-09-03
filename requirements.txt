@@ -1,0 +1,3 @@
+# PDF text extraction and Gemini-based name extraction
+PyMuPDF>=1.24,<2
+google-genai>=1,<2

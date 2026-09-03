@@ -7,6 +7,7 @@
     <title>QGIS 地図データ自動生成ツール (xROAD連携)</title>
     <meta name="description" content="橋梁リストからQGIS用のカラー付き地図データを全自動で作成します">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/leaflet/leaflet.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
@@ -277,6 +278,103 @@
         #step4 {
             display: none;
         }
+
+        /* 地図管理ワークスペース */
+        body.map-workspace-open { overflow: hidden; }
+        body.map-workspace-open #tab-content-map.map-workspace { position: fixed; inset: 0; z-index: 50; display: grid !important; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr) minmax(320px, 420px); grid-template-rows: 58px minmax(0, 1fr); gap: 0; margin: 0; padding: 0; max-width: none; border: 0; border-radius: 0; background: #edf2f0; overflow: hidden; }
+        .map-workspace-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fffdf8; border-bottom: 1px solid var(--border-color); }
+        .map-workspace-toolbar h2 { margin: 0; font-size: 19px; white-space: nowrap; }
+        #map-workspace-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .map-print-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .map-print-paper-wrap { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-light); } .map-print-paper-wrap select { padding: 5px 6px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; color: var(--text-color); font: inherit; }
+        body.map-workspace-open #tab-content-map.map-workspace.map-left-collapsed { grid-template-columns: 0 minmax(0, 1fr) minmax(320px, 420px); }
+        body.map-workspace-open #tab-content-map.map-workspace.map-right-collapsed { grid-template-columns: minmax(280px, 340px) minmax(0, 1fr) 0; }
+        body.map-workspace-open #tab-content-map.map-workspace.map-left-collapsed.map-right-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
+        .map-workspace.map-left-collapsed .map-workspace-pane.left, .map-workspace.map-right-collapsed .map-workspace-pane.right { display: none; }
+        .map-workspace-pane { min-height: 0; overflow: auto; background: #fffdf8; border-right: 1px solid var(--border-color); padding: 14px; }
+        .map-workspace-pane.left { grid-column: 1; grid-row: 2; }
+        .map-workspace-pane.right { grid-column: 3; grid-row: 2; border-right: 0; border-left: 1px solid var(--border-color); }
+        .map-workspace-canvas { grid-column: 2; grid-row: 2; position: relative; min-width: 0; min-height: 0; background: #dce8e4; }
+        #leaflet-map { position: absolute; inset: 0; }
+        .xrds-label-icon { background: transparent; border: 0; }
+        .xrds-label-text { width: 100%; height: 100%; box-sizing: border-box; display: flex; align-items: center; padding: 2px 7px; border: 1px solid; border-radius: 5px; font-size: 12px; line-height: 1.2; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 4px rgba(15,23,42,.18); cursor: pointer; }
+        .xrds-label-text.has-equipment { border-width: 4px; box-shadow: 0 1px 5px rgba(15,23,42,.24); }
+        .xrds-schedule-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border: 1px solid #64748b; border-radius: 4px; background: rgba(248,250,252,.9); color: #334155 !important; font-size: 10px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
+        .xrds-schedule-detail { margin: 9px 0; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; color: #334155; }
+        .xrds-schedule-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 7px 0; padding: 6px; border: 1px solid #e2e8f0; border-radius: 5px; background: #fff; font-size: 10px; }
+        .xrds-schedule-legend strong { grid-column: 1 / -1; color: #475569; }
+        .xrds-schedule-legend-item { display: flex; align-items: center; min-width: 0; gap: 4px; color: #475569; }
+        .xrds-schedule-legend-item i { display: inline-block; flex: 0 0 12px; width: 12px; height: 12px; border: 1px solid #94a3b8; border-radius: 2px; }
+        .xrds-schedule-detail h4 { margin: 0 0 5px; font-size: 12px; }
+        .xrds-schedule-detail ul { margin: 0; padding-left: 18px; font-size: 11px; line-height: 1.55; }
+        .xrds-schedule-detail li span { color: var(--text-light); }
+        .xrds-schedule-equipment { margin: 5px 0 0; font-size: 10px; color: #475569; }
+        .map-schedule-panel { margin-top: 12px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; }
+        .map-schedule-panel h4 { margin: 0; font-size: 13px; color: #334155; }
+        .map-schedule-panel label { display: block; margin-top: 7px; font-size: 11px; }
+        .map-schedule-file-label input { display: block; width: 100%; margin-top: 4px; font-size: 11px; }
+        .map-schedule-panel input[type="text"] { width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 5px; }
+        .xrds-schedule-preview { margin-top: 8px; padding-top: 7px; border-top: 1px solid #e2e8f0; }
+        .xrds-schedule-summary, .xrds-schedule-warning { margin: 6px 0; font-size: 10px; line-height: 1.45; }
+        .xrds-schedule-warning { color: #92400e; }
+        .xrds-schedule-table-wrap { max-height: 220px; overflow: auto; border: 1px solid #e2e8f0; background: #fff; }
+        .xrds-schedule-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .xrds-schedule-table th, .xrds-schedule-table td { padding: 4px 5px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+        .xrds-schedule-table th { position: sticky; top: 0; background: #f1f5f9; color: #475569; }
+        .xrds-schedule-auto { color: #166534; }
+        .xrds-schedule-unmatched { color: #991b1b; }
+        .xrds-schedule-decision { max-width: 150px; font-size: 10px; }
+        .map-schedule-equipment-check { color: #334155; }
+        .map-pane-toggle { position: absolute; top: 50%; z-index: 1100; width: 31px; height: 58px; transform: translateY(-50%); border: 1px solid #b8c5d8; background: rgba(255,255,255,.96); color: #334155; font-size: 25px; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(15,23,42,.18); }
+        .map-pane-toggle:hover, .map-pane-toggle:focus-visible { background: #eff6ff; color: var(--primary-color); outline: 2px solid #93c5fd; outline-offset: -2px; }
+        .map-pane-toggle.left { left: 0; border-radius: 0 9px 9px 0; border-left: 0; }
+        .map-pane-toggle.right { right: 0; border-radius: 9px 0 0 9px; border-right: 0; }
+        .map-panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 15px; }
+        .map-project-row { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; margin: 6px 0; background: #fff; }
+        .map-project-row.active { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(30, 58, 138, .12); }
+        .map-project-actions, .map-inline-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+        .map-project-facilities { max-height: 280px; overflow-y: auto; margin-top: 9px; padding-top: 6px; border-top: 1px solid var(--border-color); }
+        .map-project-facilities-empty { margin-top: 8px; padding: 7px; color: var(--text-light); font-size: 11px; background: #f8faf9; border-radius: 5px; }
+        .map-facility-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 42px; align-items: center; gap: 5px; padding: 3px; border-radius: 5px; }
+        .map-facility-row:hover, .map-facility-row.active { background: #edf5ff; }
+        .map-facility-jump { display: flex; align-items: center; min-width: 0; padding: 4px 3px; border: 0; background: transparent; color: var(--text-color); font: inherit; font-size: 11px; line-height: 1.35; text-align: left; cursor: pointer; }
+        .map-facility-equipment-marker { width: 4px; height: 22px; flex: 0 0 4px; margin-right: 5px; border-radius: 3px; }
+        .map-facility-equipment-marker.empty { visibility: hidden; }
+        .map-facility-index { flex: 0 0 24px; color: var(--text-light); text-align: right; margin-right: 5px; }
+        .map-facility-name-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; } .map-facility-name { min-width: 0; overflow-wrap: anywhere; } .map-facility-status { display: inline-block; max-width: 100%; padding: 1px 4px; border: 1px solid #b8c5d8; border-radius: 4px; background: #f8fafc; color: #475569; font-size: 10px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .map-facility-jump:hover, .map-facility-jump:focus-visible { color: var(--primary-color); text-decoration: underline; outline: none; }
+        .map-google-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; background: #4285f4; color: #fff; font: 700 12px/1 Arial, sans-serif; text-decoration: none; }
+        .map-google-btn:hover, .map-google-btn:focus-visible { background: #1a73e8; outline: 2px solid #93c5fd; outline-offset: 1px; }
+        .map-google-btn.disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; } .map-facility-delete { min-width: 42px; padding: 5px 3px; border: 1px solid #f3b4b0; border-radius: 5px; background: #fff; color: #b42318; font-size: 10px; cursor: pointer; } .map-facility-delete:hover, .map-facility-delete:focus-visible { background: #fff1f0; outline: 2px solid #f3b4b0; outline-offset: 1px; }
+        .map-mini-btn { border: 1px solid var(--border-color); background: #fff; color: var(--text-color); border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+        .map-mini-btn.primary { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+        .map-mini-btn.danger { color: #b42318; border-color: #f3b4b0; }
+        .map-search { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--border-color); border-radius: 7px; margin-bottom: 10px; }
+        .map-detail-empty { color: var(--text-light); padding: 18px 4px; line-height: 1.7; }
+        .map-editor label { display: block; font-size: 12px; color: var(--text-light); margin-top: 10px; }
+        .map-editor input, .map-editor select, .map-editor textarea { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font: inherit; }
+        .map-editor [hidden] { display: none; }
+        .map-editor textarea { min-height: 180px; font-family: Consolas, monospace; font-size: 12px; }
+        .map-field-help { display: block; margin-top: 4px; font-size: 10px; line-height: 1.4; color: var(--text-light); }
+        .map-equipment-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; margin-top: 7px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: #f8faf9; }
+        .map-equipment-legend span { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10px; color: var(--text-light); }
+        .map-equipment-legend i { width: 16px; height: 9px; box-sizing: border-box; flex: 0 0 auto; border: 3px solid; border-radius: 3px; background: #fff; }
+        .xrds-original { margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px; }
+        .xrds-original h4 { margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+        .xrds-original h4 span { color: var(--text-light); font-size: 11px; font-weight: 500; }
+        #xrds-attribute-filter { width: 100%; box-sizing: border-box; padding: 9px 10px; margin-bottom: 9px; border: 1px solid var(--border-color); border-radius: 7px; }
+        .xrds-attr-group { border: 1px solid var(--border-color); border-radius: 7px; margin-bottom: 7px; overflow: hidden; background: #fff; }
+        .xrds-attr-group summary, .xrds-raw-json summary { cursor: pointer; padding: 9px 10px; font-size: 12px; font-weight: 700; }
+        .xrds-attr-group summary span { float: right; color: var(--text-light); font-size: 10px; font-weight: 500; }
+        .xrds-attr-row { display: grid; grid-template-columns: minmax(108px, .9fr) minmax(0, 1.2fr); gap: 9px; border-top: 1px solid #edf1f4; padding: 8px 10px; font-size: 12px; }
+        .xrds-attr-row[hidden], .xrds-attr-group[hidden] { display: none; }
+        .xrds-attr-label { font-weight: 700; word-break: break-word; }
+        .xrds-attr-key { margin-top: 2px; color: var(--text-light); font: 9px/1.3 Consolas, monospace; word-break: break-all; }
+        .xrds-attr-value { text-align: right; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .xrds-attr-value.multiline { text-align: left; font-family: Consolas, monospace; }
+        .xrds-raw-json { margin-top: 9px; color: var(--text-light); }
+        .xrds-raw-json pre { max-height: 260px; overflow: auto; padding: 10px; background: #f5f7f8; border-radius: 6px; color: var(--text-color); font: 10px/1.45 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }        .map-status { position: absolute; left: 12px; bottom: 12px; z-index: 500; max-width: min(520px, calc(100% - 24px)); background: rgba(255,253,248,.94); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.14); } .map-print-header { display: none; } body.xrds-print-mode .map-workspace-canvas { background: #fff; } body.xrds-print-mode .xrds-label-icon { cursor: grab; } body.xrds-print-mode .xrds-label-icon:active { cursor: grabbing; } @media print { body * { visibility: hidden !important; } body.xrds-print-mode #tab-content-map.map-workspace, body.xrds-print-mode #tab-content-map.map-workspace * { visibility: visible !important; } body.xrds-print-mode { background: #fff; overflow: visible; } body.xrds-print-mode #tab-content-map.map-workspace { position: static !important; display: block !important; width: 100% !important; height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; } body.xrds-print-mode .map-workspace-toolbar, body.xrds-print-mode .map-workspace-pane, body.xrds-print-mode .map-pane-toggle, body.xrds-print-mode .leaflet-control-container, body.xrds-print-mode .map-status { display: none !important; } body.xrds-print-mode .map-workspace-canvas { display: block !important; width: 100% !important; height: 175mm !important; min-height: 175mm !important; background: #fff !important; } body.xrds-print-mode #leaflet-map { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; } body.xrds-print-mode .map-print-header { position: relative; z-index: 1000; display: flex !important; justify-content: space-between; gap: 10px; height: 9mm; box-sizing: border-box; padding: 0 0 2mm; background: #fff; color: #111827; font-size: 11pt; } body.xrds-print-mode .map-print-header span { color: #475569; font-size: 9pt; } body.xrds-print-mode .xrds-label-icon { cursor: default !important; } }
+        @media (max-width: 1050px) { body.map-workspace-open #tab-content-map.map-workspace { grid-template-columns: minmax(230px, 290px) minmax(0, 1fr); } .map-workspace-pane.right { position: absolute; top: 58px; right: 0; bottom: 0; width: min(390px, 88vw); z-index: 700; box-shadow: -5px 0 16px rgba(0,0,0,.18); } }
+        @media (max-width: 720px) { body.map-workspace-open #tab-content-map.map-workspace { grid-template-columns: 1fr; grid-template-rows: 54px minmax(0, 1fr); } .map-workspace-canvas { grid-column: 1; grid-row: 2; } .map-workspace-pane.left { position: absolute; top: 54px; left: 0; bottom: 0; width: min(310px, 88vw); z-index: 700; box-shadow: 5px 0 16px rgba(0,0,0,.18); } .map-workspace-toolbar { padding: 8px; } #map-workspace-status { display:none; } }
     </style>
 </head>
 
@@ -292,6 +390,7 @@
         <div class="tabs">
             <button class="tab-btn active" id="tab-btn-file" onclick="switchTab('file')">ファイルから検索</button>
             <button class="tab-btn" id="tab-btn-condition" onclick="switchTab('condition')">条件から検索</button>
+            <button class="tab-btn" id="tab-btn-map" onclick="switchTab('map')">地図管理</button>
         </div>
 
         <!-- Step 1: Settings & Upload -->
@@ -367,6 +466,12 @@
             </div>
 
             <div id="tab-content-file" class="tab-content active">
+                <div class="form-group">
+                    <label for="file-city">市区町村の絞り込み（ファイル検索）</label>
+                    <input type="text" id="file-city" placeholder="例: 大津市（未入力なら都道府県全域）"
+                        style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; box-sizing: border-box;">
+                    <div style="margin-top:6px; color:var(--text-light); font-size:13px;">上の都道府県を選択してから入力してください。市・区・町・村名の一部でも検索できます。</div>
+                </div>
                 <div
                     style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
                     <p style="margin-top:0;"><strong>【準備】</strong>
@@ -505,7 +610,24 @@
                 </table>
             </div>
 
-            <div style="margin-top: 30px; display: flex; gap: 15px;">
+            <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <label>地図管理に保存（年度・業務名で後日見返せます）</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="save-nendo-input" list="nendo-datalist" placeholder="年度 (例: 2025年度)"
+                        style="flex: 1; min-width: 140px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                    <datalist id="nendo-datalist"></datalist>
+                    <input type="text" id="save-gyomu-input" list="gyomu-datalist" placeholder="業務名"
+                        style="flex: 2; min-width: 200px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                    <datalist id="gyomu-datalist"></datalist>
+                    <button type="button" class="btn btn-outline" id="save-map-btn"
+                        style="flex-shrink: 0; padding: 12px 20px; font-size: 14px;">🗺️ 地図に保存</button>
+                    <button type="button" class="btn" id="add-existing-project-btn" onclick="openMapForExistingProject()"
+                        style="flex-shrink: 0; padding: 12px 20px; font-size: 14px;">既存業務に追加</button>
+                </div>
+                <p style="margin:10px 0 0; color:var(--text-light); font-size:12px;">既存業務へ追加する場合は、候補を選んで上のボタンを押し、地図管理で追加先業務の「編集」を押します。</p>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 15px;">
                 <button class="btn btn-outline" onclick="exportCSV()"
                     style="flex: 1; border-color: #10b981; color: #10b981;">
                     <span>📊 CSVとしてダウンロード</span>
@@ -538,13 +660,69 @@
                 style="display: inline-block; margin-top: 20px; color: var(--text-light); text-decoration: underline; cursor: pointer;"
                 onclick="location.reload()">最初からやり直す</span>
         </div>
-    </div>
+
+        <!-- Map Management Workspace -->
+        <div class="card map-workspace" id="tab-content-map" style="display:none;">
+            <div class="map-workspace-toolbar">
+                <h2>地図管理</h2>
+                <span id="map-workspace-status" style="font-size:12px; color:var(--text-light);">保存済み業務を選択してください</span><div class="map-print-controls"><label class="map-print-paper-wrap" id="map-print-paper-wrap" hidden>用紙<select id="map-print-paper" aria-label="印刷用紙サイズ"><option value="A4">A4横</option><option value="A3">A3横</option></select></label><button type="button" class="map-mini-btn" id="map-print-mode-btn">印刷モード</button><button type="button" class="map-mini-btn" id="map-print-auto-btn" hidden>自動配置に戻す</button><button type="button" class="map-mini-btn primary" id="map-print-save-btn" hidden>印刷位置を保存</button><button type="button" class="map-mini-btn primary" id="map-print-btn" hidden>印刷</button><button type="button" class="map-mini-btn" id="map-print-exit-btn" hidden>終了</button></div>
+                <button type="button" class="map-mini-btn" id="map-back-btn">通常画面へ戻る</button>
+            </div>
+            <aside class="map-workspace-pane left">
+                <h3 class="map-panel-title">業務・検索 <span id="map-project-count" style="font-size:12px; color:var(--text-light);"></span></h3>
+                <input id="map-project-search" class="map-search" type="search" placeholder="業務名・年度を絞り込み">
+                <div id="project-tree"></div>
+                <hr style="border:0;border-top:1px solid var(--border-color); margin:16px 0;">
+                <h3 class="map-panel-title">新しい業務</h3>
+                <input id="map-new-nendo" class="map-search" type="text" list="nendo-datalist" placeholder="年度（例: 2026年度）">
+                <input id="map-new-gyomu" class="map-search" type="text" list="gyomu-datalist" placeholder="業務名">
+                <div class="map-inline-actions"><button type="button" class="map-mini-btn primary" id="map-create-project-btn">空の業務を作成</button></div>
+                <hr style="border:0;border-top:1px solid var(--border-color); margin:16px 0;">
+                <h3 class="map-panel-title">表示フィルタ</h3>
+                <div id="hantei-filter" style="font-size:13px; display:grid; gap:6px;">
+                    <label><input type="checkbox" class="hantei-cb" value="1" checked> 区分1</label>
+                    <label><input type="checkbox" class="hantei-cb" value="2" checked> 区分2</label>
+                    <label><input type="checkbox" class="hantei-cb" value="3" checked> 区分3</label>
+                    <label><input type="checkbox" class="hantei-cb" value="4" checked> 区分4</label>
+                    <label><input type="checkbox" class="hantei-cb" value="other" checked> その他/未設定</label><label><input type="checkbox" id="map-label-color-toggle" checked> 判定区分の色分け</label><label><input type="checkbox" id="map-equipment-border-toggle" checked> 使用機材の枠色</label>
+                </div>
+            </aside>
+            <main class="map-workspace-canvas">
+                <div id="leaflet-map"></div><div id="map-print-header" class="map-print-header" aria-hidden="true"></div>
+                <button type="button" class="map-pane-toggle left" id="map-toggle-left-btn" aria-label="左パネルを隠す" title="左パネルを隠す" aria-pressed="false">‹</button>
+                <button type="button" class="map-pane-toggle right" id="map-toggle-right-btn" aria-label="右パネルを隠す" title="右パネルを隠す" aria-pressed="false">›</button>
+                <div id="map-canvas-status" class="map-status">業務の「表示」を押すと地図に重ねて表示します。</div>
+            </main>
+            <aside class="map-workspace-pane right">
+                <div id="map-detail-panel"></div>
+            </aside>
+        </div>    </div>
 
     <script>
         // Global State
         let apiResults = {}; // Name -> Candidates mapping
 
         function switchTab(tabId) {
+            if (tabId === 'map') {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('tab-btn-map').classList.add('active');
+                document.getElementById('step1').style.display = 'none';
+                document.getElementById('step2').style.display = 'none';
+                document.getElementById('step3').style.display = 'none';
+                document.getElementById('tab-content-map').style.display = 'grid';
+                document.body.classList.add('map-workspace-open');
+                if (typeof window.onMapTabActivated === 'function') window.onMapTabActivated();
+                return;
+            }
+
+            document.getElementById('tab-content-map').style.display = 'none';
+            document.body.classList.remove('map-workspace-open');
+            // ステップ2/3まで進んでいる場合はstep1を勝手に再表示しない
+            if (document.getElementById('step2').style.display !== 'block' &&
+                document.getElementById('step3').style.display !== 'block') {
+                document.getElementById('step1').style.display = 'block';
+            }
+
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
@@ -797,10 +975,19 @@
         }
 
         async function fetchCandidates(names) {
-            window.currentSearchSummary = ''; // Clear for file search mode
-
             const prefCode = document.getElementById('pref-select').value;
+            const city = document.getElementById('file-city').value.trim();
             const facilityType = document.getElementById('facility-type-select').value;
+            if (city && !prefCode) {
+                throw new Error('市区町村で絞り込む場合は、先に都道府県を選択してください。');
+            }
+            const summaryParts = [];
+            if (prefCode) {
+                const prefSelect = document.getElementById('pref-select');
+                summaryParts.push(`都道府県: ${prefSelect.options[prefSelect.selectedIndex].text}`);
+            }
+            if (city) summaryParts.push(`市区町村: ${city}`);
+            window.currentSearchSummary = summaryParts.join(' / ');
             let endpoints = facilityType === 'all'
                 ? ['bridges', 'tunnels', 'sheds', 'culverts', 'pedestrian-decks', 'signages', 'earthworks']
                 : [facilityType];
@@ -808,7 +995,7 @@
             const response = await fetch('/api/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bridge_names: names, endpoints: endpoints, pref_code: prefCode })
+                body: JSON.stringify({ bridge_names: names, endpoints: endpoints, pref_code: prefCode, city: city })
             });
 
             if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
@@ -823,6 +1010,7 @@
         }
 
         function renderConfirmationTable(names) {
+            delete window.__pendingMapFeatures;
             const tbody = document.getElementById('results-tbody');
             tbody.innerHTML = '';
 
@@ -905,8 +1093,8 @@
             });
         }
 
-        async function exportMapData() {
-            // Collect selected features
+        // 選択中の候補からGeoJSON Feature配列を組み立てる（Zip出力と地図保存の両方から使う共通ロジック）
+        function collectSelectedFeatures() {
             const features = [];
             const selects = document.querySelectorAll('.candidate-select');
 
@@ -915,12 +1103,43 @@
                 const selectedIdx = parseInt(select.value, 10);
 
                 if (selectedIdx >= 0) {
-                    const candidate = apiResults[name][selectedIdx];
+                    const candidate = apiResults[name]?.[selectedIdx];
                     if (candidate && candidate.feature) {
                         features.push(candidate.feature);
                     }
                 }
             });
+
+            return features;
+        }
+        window.collectSelectedFeatures = collectSelectedFeatures;
+        function rememberSelectedFeaturesForMap() {
+            const features = collectSelectedFeatures();
+            if (!features.length) {
+                window.__pendingMapFeatures = [];
+                return [];
+            }
+            window.__pendingMapFeatures = features.map(feature =>
+                typeof structuredClone === 'function'
+                    ? structuredClone(feature)
+                    : JSON.parse(JSON.stringify(feature))
+            );
+            return window.__pendingMapFeatures;
+        }
+
+        function openMapForExistingProject() {
+            const features = rememberSelectedFeaturesForMap();
+            if (!features.length) {
+                alert('既存業務に追加する施設を1件以上選択してください。');
+                return;
+            }
+            switchTab('map');
+        }
+        window.rememberSelectedFeaturesForMap = rememberSelectedFeaturesForMap;
+        window.openMapForExistingProject = openMapForExistingProject;
+
+        async function exportMapData() {
+            const features = collectSelectedFeatures();
 
             if (features.length === 0) {
                 alert('地図に出力する施設が1つも選ばれていません。');
@@ -952,6 +1171,18 @@
                 a.click();
                 a.remove();
                 window.URL.revokeObjectURL(url);
+
+                if (!window.__savedToMapThisSession && confirm('地図管理にはまだ保存されていません。年度・業務名を指定して保存しますか？（後日ブラウザから見返せます）')) {
+                    const nendo = prompt('年度を入力してください（例: 2025年度）', document.getElementById('save-nendo-input').value || '');
+                    const gyomu = prompt('業務名を入力してください', document.getElementById('save-gyomu-input').value || '');
+                    if (nendo && gyomu) {
+                        document.getElementById('save-nendo-input').value = nendo;
+                        document.getElementById('save-gyomu-input').value = gyomu;
+                        if (typeof window.saveToMap === 'function') {
+                            await window.saveToMap();
+                        }
+                    }
+                }
 
                 document.getElementById('step2').style.display = 'none';
                 document.getElementById('step3').style.display = 'block';
@@ -1010,21 +1241,31 @@
 
         function parseExcelFile(file) {
             return new Promise((resolve, reject) => {
+                if (typeof XLSX === 'undefined') {
+                    reject(new Error('Excel読み込みライブラリを取得できませんでした。インターネット接続を確認してページを再読み込みしてください。'));
+                    return;
+                }
+
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     try {
-                        const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                        const workbook = XLSX.read(e.target.result, { type: 'array' });
+                        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                            throw new Error('Excelファイルに読み込めるシートがありません。');
+                        }
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         // header: 1 converts to array of arrays
                         const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
                         resolve(extractColumnA(data));
                     } catch (error) { reject(error); }
                 };
-                reader.onerror = () => reject(new Error('Excel read error'));
-                reader.readAsBinaryString(file);
+                reader.onerror = () => reject(new Error('Excelファイルを読み込めませんでした。'));
+                reader.readAsArrayBuffer(file);
             });
         }
     </script>
+    <script src="static/leaflet/leaflet.js"></script>
+    <style id="xrds-print-page-style">@page { size: A4 landscape; margin: 10mm; }</style><script src="static/map.js?v=21"></script>
 </body>
 
 </html>
