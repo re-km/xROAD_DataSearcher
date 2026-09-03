@@ -19,10 +19,12 @@
     const hanteiFilter = new Set(['1', '2', '3', '4', 'other']);
     const DISPLAY_SETTINGS_STORAGE_KEY = 'xrds-map-display-options-v1';
     const PRINT_PAPER_STORAGE_KEY = 'xrds-map-print-paper-v1';
+    const PRINT_DISPLAY_SETTINGS_STORAGE_KEY = 'xrds-map-print-display-v1';
     const NEUTRAL_MAP_COLOR = { fill: 'rgba(255,255,255,.92)', text: '#1f2937', border: 'rgba(100,116,139,.9)' };
     let displayOptions = loadDisplayOptions();
     let printMode = false;
     let printPaper = loadPrintPaper();
+    let printDisplayOptions = loadPrintDisplayOptions();
     const printDirtyProjects = new Set();
 
 
@@ -82,6 +84,19 @@
     }
     function persistPrintPaper() {
         try { window.localStorage?.setItem(PRINT_PAPER_STORAGE_KEY, printPaper); } catch (error) {}
+    }
+    function loadPrintDisplayOptions() {
+        const defaults = { header: true, paneTabs: false };
+        try {
+            const raw = window.localStorage?.getItem(PRINT_DISPLAY_SETTINGS_STORAGE_KEY);
+            const saved = raw ? JSON.parse(raw) : {};
+            return { header: saved.header !== false, paneTabs: saved.paneTabs === true };
+        } catch (error) {
+            return defaults;
+        }
+    }
+    function persistPrintDisplayOptions() {
+        try { window.localStorage?.setItem(PRINT_DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify(printDisplayOptions)); } catch (error) {}
     }
     function getPrintLabelAnchor(feature) {
         const raw = feature?.properties?.XRDS_print_label_anchor;
@@ -358,6 +373,10 @@
         if (equipmentBorderToggle) { equipmentBorderToggle.checked = displayOptions.equipmentBorders; equipmentBorderToggle.addEventListener('change', onMapDisplayOptionChange); }
         const printPaperSelect = document.getElementById('map-print-paper');
         if (printPaperSelect) { printPaperSelect.value = printPaper; printPaperSelect.addEventListener('change', onPrintPaperChange); }
+        const printHeaderToggle = document.getElementById('map-print-header-toggle');
+        const printPaneTabsToggle = document.getElementById('map-print-pane-tabs-toggle');
+        if (printHeaderToggle) { printHeaderToggle.checked = printDisplayOptions.header; printHeaderToggle.addEventListener('change', onPrintDisplayOptionChange); }
+        if (printPaneTabsToggle) { printPaneTabsToggle.checked = printDisplayOptions.paneTabs; printPaneTabsToggle.addEventListener('change', onPrintDisplayOptionChange); }
         document.getElementById('map-print-mode-btn')?.addEventListener('click', () => setPrintMode(true));
         document.getElementById('map-print-auto-btn')?.addEventListener('click', resetPrintLabelAnchors);
         document.getElementById('map-print-save-btn')?.addEventListener('click', savePrintLayouts);
@@ -378,6 +397,22 @@
         else return;
         persistDisplayOptions();
         renderVisibleMarkers();
+        updatePrintHeader();
+    }
+    function applyPrintDisplayOptions() {
+        const body = document.body;
+        if (!body) return;
+        body.classList.toggle('xrds-print-hide-header', printMode && !printDisplayOptions.header);
+        body.classList.toggle('xrds-print-show-pane-tabs', printMode && printDisplayOptions.paneTabs);
+    }
+    function onPrintDisplayOptionChange(event) {
+        const id = event.target?.id;
+        if (id === 'map-print-header-toggle') printDisplayOptions.header = Boolean(event.target.checked);
+        else if (id === 'map-print-pane-tabs-toggle') printDisplayOptions.paneTabs = Boolean(event.target.checked);
+        else return;
+        persistPrintDisplayOptions();
+        applyPrintDisplayOptions();
+        updatePrintControls();
         updatePrintHeader();
     }
     function onPrintPaperChange(event) {
@@ -402,17 +437,26 @@
         const saveButton = document.getElementById('map-print-save-btn');
         const printButton = document.getElementById('map-print-btn');
         const exitButton = document.getElementById('map-print-exit-btn');
+        const headerWrap = document.getElementById('map-print-header-wrap');
+        const paneTabsWrap = document.getElementById('map-print-pane-tabs-wrap');
         if (paperWrap) paperWrap.hidden = !printMode;
         if (autoButton) autoButton.hidden = !printMode;
         if (saveButton) saveButton.hidden = !printMode;
         if (printButton) printButton.hidden = !printMode;
         if (exitButton) exitButton.hidden = !printMode;
+        if (headerWrap) headerWrap.hidden = !printMode;
+        if (paneTabsWrap) paneTabsWrap.hidden = !printMode;
+        const printHeaderToggle = document.getElementById('map-print-header-toggle');
+        const printPaneTabsToggle = document.getElementById('map-print-pane-tabs-toggle');
+        if (printHeaderToggle) printHeaderToggle.checked = printDisplayOptions.header;
+        if (printPaneTabsToggle) printPaneTabsToggle.checked = printDisplayOptions.paneTabs;
         const paperSelect = document.getElementById('map-print-paper');
         if (paperSelect) paperSelect.value = printPaper;
     }
     function setPrintMode(enabled) {
         printMode = Boolean(enabled);
         document.body?.classList.toggle('xrds-print-mode', printMode);
+        applyPrintDisplayOptions();
         document.getElementById('tab-content-map')?.classList.toggle('map-print-mode', printMode);
         applyPrintPageSize();
         updatePrintControls();
@@ -424,6 +468,7 @@
         status(printMode ? '印刷モードです。ラベルをドラッグして配置し、「印刷位置を保存」してください。' : '通常の地図表示に戻りました。');
     }
     function beforePrint() {
+        applyPrintDisplayOptions();
         if (!printMode) return;
         applyPrintPageSize();
         leafletMap?.invalidateSize({ pan: false });

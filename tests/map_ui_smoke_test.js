@@ -21,7 +21,9 @@ const instrumented = source.replace(
         renderProjectTree,
         onProjectTreeClick,
         onMapDisplayOptionChange,
+        onPrintDisplayOptionChange,
         displayOptions() { return { ...displayOptions }; },
+        printDisplayOptions() { return { ...printDisplayOptions }; },
         onDetailClick,
         onDetailChange,
         onMapClick,
@@ -218,6 +220,22 @@ const projectTreeAction = (action, featureIndex) => {
     test.onMapDisplayOptionChange({ target: elements['map-equipment-border-toggle'] });
     assert.equal(test.displayOptions().hanteiColors, true);
     assert.equal(test.displayOptions().equipmentBorders, true);
+    Object.assign(elements, {
+        'map-print-header-toggle': { id: 'map-print-header-toggle', checked: false },
+        'map-print-pane-tabs-toggle': { id: 'map-print-pane-tabs-toggle', checked: true },
+    });
+    test.onPrintDisplayOptionChange({ target: elements['map-print-header-toggle'] });
+    elements['map-print-pane-tabs-toggle'].checked = true;
+    test.onPrintDisplayOptionChange({ target: elements['map-print-pane-tabs-toggle'] });
+    assert.equal(test.printDisplayOptions().header, false);
+    assert.equal(test.printDisplayOptions().paneTabs, true);
+    elements['map-print-pane-tabs-toggle'].checked = false;
+    test.onPrintDisplayOptionChange({ target: elements['map-print-pane-tabs-toggle'] });
+    elements['map-print-header-toggle'].checked = true;
+    test.onPrintDisplayOptionChange({ target: elements['map-print-header-toggle'] });
+
+    assert.equal(test.printDisplayOptions().header, true);
+    assert.equal(test.printDisplayOptions().paneTabs, false);
     const denseLabels = Array.from({ length: 30 }, (_, index) => ({
         id: index,
         point: { x: 450, y: 320 },
@@ -269,9 +287,13 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=21/);
+    assert.match(indexHtml, /static\/map\.js\?v=22/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);
     assert.match(indexHtml, /id="map-equipment-border-toggle"/);
+    assert.match(indexHtml, /id="map-print-header-toggle"/);
+    assert.match(indexHtml, /id="map-print-pane-tabs-toggle"/);
+    assert.match(indexHtml, /xrds-print-hide-header/);
+    assert.match(indexHtml, /xrds-print-show-pane-tabs/);
     assert.match(indexHtml, /value="A3">A3横/);
     assert.match(source, /XRDS_print_label_anchor/);
 
