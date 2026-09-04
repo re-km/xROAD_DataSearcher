@@ -12,7 +12,7 @@ function assert(condition, message) {
 }
 
 assert(mobile.includes('window.XRDS_MOBILE_MODE = true;'), 'mobile mode flag is missing');
-assert(mobile.includes('/static/map.js?v=31'), 'mobile entry must use the current shared map script');
+assert(mobile.includes('/static/map.js?v=33'), 'mobile entry must use the current shared map script');
 assert(mobile.includes('/static/manifest-mobile.webmanifest'), 'mobile manifest link is missing');
 assert(!mobile.includes('map-print-mode-btn'), 'mobile entry must not expose print mode');
 assert(!mobile.includes('save-map-btn'), 'mobile entry must not expose search save controls');

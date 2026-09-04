@@ -1,4 +1,4 @@
-const XRDS_SHELL_CACHE = 'xrds-shell-v31';
+const XRDS_SHELL_CACHE = 'xrds-shell-v33';
 const XRDS_TILE_CACHE = 'xrds-gsi-tiles-v1';
 const XRDS_SHELL_FILES = [
     '/',
@@ -8,7 +8,7 @@ const XRDS_SHELL_FILES = [
     '/static/leaflet/leaflet.js',
     '/static/leaflet/images/marker-icon.png',
     '/static/leaflet/images/marker-shadow.png',
-    '/static/map.js?v=31',
+    '/static/map.js?v=33',
     '/static/offline.js?v=2',
     '/static/manifest.webmanifest',
     '/static/manifest-mobile.webmanifest',

@@ -23,6 +23,7 @@
     const PRINT_DISPLAY_SETTINGS_STORAGE_KEY = 'xrds-map-print-display-v1';
     const NEUTRAL_MAP_COLOR = { fill: 'rgba(255,255,255,.92)', text: '#1f2937', border: 'rgba(100,116,139,.9)' };
     const PIN_COLOR = '#000000';
+    const PIN_SIZE_SCALE = .5;
     let displayOptions = loadDisplayOptions();
     let printMode = false;
     let printPaper = loadPrintPaper();
@@ -741,6 +742,12 @@
         const mapRect = mapContainer.getBoundingClientRect();
         if (!mapRect.width || !mapRect.height) throw new Error('地図表示のサイズを取得できません。');
         await waitForPrintTiles(mapContainer);
+        if (renderTimer) {
+            clearTimeout(renderTimer);
+            renderTimer = null;
+        }
+        renderVisibleMarkers();
+        await waitForLeafletPaint();
         const spec = getPrintPaperSpec();
         const canvas = document.createElement('canvas');
         canvas.width = spec.widthPx;
@@ -779,7 +786,6 @@
         if (button) { button.disabled = true; button.textContent = 'JPEG作成中...'; }
         try {
             beforePrint();
-            await waitForLeafletPaint();
             const canvas = await renderPrintJpegCanvas();
             const blob = await canvasToJpeg(canvas);
             const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -1517,8 +1523,8 @@
         clusters.forEach(cluster => {
             const center = [cluster.lat / cluster.count, cluster.lng / cluster.count];
             const marker = L.circleMarker(center, {
-                radius: Math.min(20, 7 + Math.log2(cluster.count + 1) * 2),
-                color: PIN_COLOR, weight: 2, fillColor: PIN_COLOR, fillOpacity: .9,
+                radius: Math.min(20, 7 + Math.log2(cluster.count + 1) * 2) * PIN_SIZE_SCALE,
+                color: PIN_COLOR, weight: 2 * PIN_SIZE_SCALE, fillColor: PIN_COLOR, fillOpacity: .9,
             });
             marker.bindTooltip(`${cluster.count}地点（拡大すると個別表示）`, { sticky: true });
             marker.on('click', () => {
@@ -1671,7 +1677,7 @@
         entries.forEach(entry => {
             const selected = activeFeature && activeFeature.project === entry.project && activeFeature.index === entry.index;
             const marker = L.circleMarker([entry.coord.lat, entry.coord.lng], {
-                radius: selected ? 9 : 6, color: PIN_COLOR, weight: selected ? 3 : 1,
+                radius: (selected ? 9 : 6) * PIN_SIZE_SCALE, color: PIN_COLOR, weight: (selected ? 3 : 1) * PIN_SIZE_SCALE,
                 fillColor: PIN_COLOR, fillOpacity: 1,
             });
             const schedulePopup = renderScheduleDetail(entry.feature.properties);

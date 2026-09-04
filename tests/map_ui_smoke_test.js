@@ -43,14 +43,17 @@ assert.notEqual(instrumented, source, 'map.js のテストフックを挿入で�
 assert.match(source, /SCHEDULE_LABEL_ZOOM_THRESHOLD = 14/);
 assert.match(source, /leafletMap\.on\('zoomend'/);
 assert.match(source, /PIN_COLOR = '#000000'/);
-assert.ok(source.includes('color: PIN_COLOR, weight: 2, fillColor: PIN_COLOR'));
-assert.ok(source.includes('radius: selected ? 9 : 6, color: PIN_COLOR, weight: selected ? 3 : 1,'));
+assert.ok(source.includes('const PIN_SIZE_SCALE = .5;'));
+assert.ok(source.includes('radius: Math.min(20, 7 + Math.log2(cluster.count + 1) * 2) * PIN_SIZE_SCALE'));
+assert.ok(source.includes('color: PIN_COLOR, weight: 2 * PIN_SIZE_SCALE, fillColor: PIN_COLOR'));
+assert.ok(source.includes('radius: (selected ? 9 : 6) * PIN_SIZE_SCALE, color: PIN_COLOR, weight: (selected ? 3 : 1) * PIN_SIZE_SCALE,'));
 assert.ok(source.includes('fillColor: PIN_COLOR, fillOpacity: 1,'));
 assert.match(source, /leaflet-pane canvas/);
 assert.ok(source.includes('context.drawImage('));
 assert.match(source, /leaflet-pane svg/);
 assert.match(source, /typeof Path2D !== 'function'/);
 assert.ok(source.includes('const color = getColorFor(getHanteiKey(entry.feature.properties));'));
+assert.match(source, /await waitForPrintTiles\(mapContainer\);\s*if \(renderTimer\) \{\s*clearTimeout\(renderTimer\);\s*renderTimer = null;\s*\}\s*renderVisibleMarkers\(\);\s*await waitForLeafletPaint\(\);/);
 const elements = {
     'map-detail-panel': { innerHTML: '' },
 };
@@ -347,7 +350,7 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=31/);
+    assert.match(indexHtml, /static\/map\.js\?v=33/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);
     assert.match(indexHtml, /id="map-equipment-border-toggle"/);
     assert.match(indexHtml, /id="map-print-header-toggle"/);
