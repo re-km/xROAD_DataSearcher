@@ -4,6 +4,7 @@
     let mapInitialized = false;
     let styleRules = null;
     let projectTreeData = [];
+    let offlineProjects = [];
     let activeProjectKey = null;
     let activeFeature = null;
     let moveMode = false;
@@ -21,6 +22,7 @@
     const PRINT_PAPER_STORAGE_KEY = 'xrds-map-print-paper-v1';
     const PRINT_DISPLAY_SETTINGS_STORAGE_KEY = 'xrds-map-print-display-v1';
     const NEUTRAL_MAP_COLOR = { fill: 'rgba(255,255,255,.92)', text: '#1f2937', border: 'rgba(100,116,139,.9)' };
+    const PIN_COLOR = '#000000';
     let displayOptions = loadDisplayOptions();
     let printMode = false;
     let printPaper = loadPrintPaper();
@@ -174,7 +176,118 @@
         const name = props.syogen_shisetsu_meisyou || props.DPF_title || '';
         const coord = getCoordinates(feature);
         return coord ? `point:${name}|${coord.lat.toFixed(7)}|${coord.lng.toFixed(7)}` : `feature:${name}|${JSON.stringify(feature?.geometry || null)}`;
-    }    function isOriginalValueEmpty(value) {
+    }
+    let mobileNoteRenderToken = 0;
+    function mobileNoteKey(project, feature) {
+        const localProjectKey = window.xrdsOffline?.keyFor
+            ? window.xrdsOffline.keyFor(project.nendo, project.gyomu)
+            : projectKey(project.nendo, project.gyomu);
+        const facilityRef = window.xrdsOffline?.facilityRefFor
+            ? window.xrdsOffline.facilityRefFor(feature)
+            : featureIdentity(feature);
+        return { projectKey: localProjectKey, facilityRef };
+    }
+    function formatMobileNoteTime(value) {
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) return '';
+        try {
+            return date.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });
+        } catch (error) {
+            return date.toLocaleString('ja-JP');
+        }
+    }
+    function renderMobileNotePanel() {
+        return `<section class="map-mobile-note">
+          <h4>iPhoneメモ <span>このiPhoneだけ</span></h4>
+          <p class="map-mobile-note-help">現場メモはPC共有データへ送信しません。通信がなくても保存できます。</p>
+          <textarea id="map-mobile-note" maxlength="4000" placeholder="確認したこと、補足などを入力"></textarea>
+          <div class="map-inline-actions"><button type="button" class="map-mini-btn primary" data-detail-action="save-mobile-note">メモを保存</button><button type="button" class="map-mini-btn" data-detail-action="delete-mobile-note">メモを削除</button></div>
+          <p class="map-mobile-note-status" id="map-mobile-note-status" role="status">読み込み中...</p>
+        </section>`;
+    }
+    function setMobileNoteStatus(message, isError = false) {
+        const statusElement = document.getElementById('map-mobile-note-status');
+        if (!statusElement) return;
+        statusElement.textContent = message;
+        statusElement.classList.toggle('error', Boolean(isError));
+    }
+    function setMobileNoteButtonsDisabled(disabled) {
+        document.querySelectorAll('[data-detail-action="save-mobile-note"], [data-detail-action="delete-mobile-note"]').forEach(button => { button.disabled = disabled; });
+    }
+    async function hydrateMobileNotePanel(project, feature, token) {
+        const noteApi = window.xrdsOffline;
+        if (!noteApi?.getNote) {
+            setMobileNoteStatus('この持ち出し版はメモ機能を利用できません。最新版を読み込んでください。', true);
+            return;
+        }
+        try {
+            const key = mobileNoteKey(project, feature);
+            const note = await noteApi.getNote(key.projectKey, key.facilityRef);
+            if (token !== mobileNoteRenderToken || activeFeature?.project !== project || activeFeature?.feature !== feature) return;
+            const textarea = document.getElementById('map-mobile-note');
+            const deleteButton = document.querySelector('[data-detail-action="delete-mobile-note"]');
+            if (textarea) textarea.value = note?.text || '';
+            if (deleteButton) deleteButton.disabled = !note;
+            setMobileNoteStatus(note ? `最終保存: ${formatMobileNoteTime(note.updatedAt)}` : 'まだ保存されていません。');
+        } catch (error) {
+            if (token === mobileNoteRenderToken) setMobileNoteStatus(`メモを読み込めません: ${error.message}`, true);
+        }
+    }
+    async function saveMobileNote(project) {
+        if (!activeFeature || activeFeature.project !== project) return;
+        const textarea = document.getElementById('map-mobile-note');
+        if (!textarea) return;
+        if (!textarea.value.trim()) {
+            alert('内容が空です。削除する場合は「メモを削除」を押してください。');
+            return;
+        }
+        if (!window.xrdsOffline?.saveNote) {
+            setMobileNoteStatus('この持ち出し版はメモ機能を利用できません。最新版を読み込んでください。', true);
+            return;
+        }
+        const key = mobileNoteKey(project, activeFeature.feature);
+        setMobileNoteButtonsDisabled(true);
+        try {
+            const saved = await window.xrdsOffline.saveNote({
+                projectKey: key.projectKey,
+                facilityRef: key.facilityRef,
+                text: textarea.value,
+                displayName: getFeatureDisplayName(activeFeature.feature, activeFeature.index),
+            });
+            setMobileNoteStatus(`保存しました: ${formatMobileNoteTime(saved?.updatedAt)}`);
+            const deleteButton = document.querySelector('[data-detail-action="delete-mobile-note"]');
+            if (deleteButton) deleteButton.disabled = false;
+            renderProjectTree();
+        } catch (error) {
+            setMobileNoteStatus(`メモを保存できません: ${error.message}`, true);
+        } finally {
+            const saveButton = document.querySelector('[data-detail-action="save-mobile-note"]');
+            if (saveButton) saveButton.disabled = false;
+        }
+    }
+    async function deleteMobileNote(project) {
+        if (!activeFeature || activeFeature.project !== project || !window.xrdsOffline?.deleteNote) return;
+        if (!confirm('このiPhoneメモを削除しますか？')) return;
+        const key = mobileNoteKey(project, activeFeature.feature);
+        setMobileNoteButtonsDisabled(true);
+        let deleted = false;
+        try {
+            await window.xrdsOffline.deleteNote(key.projectKey, key.facilityRef);
+            deleted = true;
+            const textarea = document.getElementById('map-mobile-note');
+            if (textarea) textarea.value = '';
+            setMobileNoteStatus('メモを削除しました。');
+            renderProjectTree();
+        } catch (error) {
+            setMobileNoteStatus(`メモを削除できません: ${error.message}`, true);
+        } finally {
+            const saveButton = document.querySelector('[data-detail-action="save-mobile-note"]');
+            if (saveButton) saveButton.disabled = false;
+            const deleteButton = document.querySelector('[data-detail-action="delete-mobile-note"]');
+            if (deleteButton) deleteButton.disabled = !deleted;
+        }
+    }
+    function isOriginalValueEmpty(value) {
         return value === null || value === undefined
             || (typeof value === 'string' && !value.trim())
             || (Array.isArray(value) && value.length === 0);
@@ -244,6 +357,14 @@
         const toolbar = document.getElementById('map-workspace-status');
         if (toolbar) { toolbar.textContent = message; toolbar.title = message; }
     }
+    function renderOfflineStatus() {
+        const element = document.getElementById('map-offline-status');
+        if (!element) return;
+        const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+        const deviceLabel = window.XRDS_MOBILE_MODE ? 'iPhone内保存' : 'PCブラウザ内保存';
+        element.textContent = (online ? 'オンライン' : 'オフライン') + ' / ' + deviceLabel + ': ' + offlineProjects.length + '業務';
+        element.classList.toggle('map-offline-badge', !online || offlineProjects.length > 0);
+    }
     function setPaneCollapsed(side, collapsed) {
         const workspace = document.getElementById('tab-content-map');
         if (!workspace) return;
@@ -277,13 +398,21 @@
         const rightButton = document.getElementById('map-toggle-right-btn');
         if (leftButton) leftButton.onclick = () => setPaneCollapsed('left', !leftPaneCollapsed);
         if (rightButton) rightButton.onclick = () => setPaneCollapsed('right', !rightPaneCollapsed);
+        if (!mapInitialized && window.matchMedia?.('(max-width: 720px)').matches) {
+            rightPaneCollapsed = true;
+            document.getElementById('tab-content-map')?.classList.add('map-right-collapsed');
+        }
         updatePaneToggleButtons();
     }
     async function ensureStyleRules() {
         if (!styleRules) {
-            const response = await fetch('/api/style');
-            if (!response.ok) throw new Error(await response.text());
-            styleRules = await response.json();
+            try {
+                const response = await fetch('/api/style');
+                if (!response.ok) throw new Error(await response.text());
+                styleRules = await response.json();
+            } catch (error) {
+                styleRules = {};
+            }
         }
     }
     function onMapClick(event) {
@@ -361,6 +490,9 @@
         document.getElementById('map-create-project-btn')?.addEventListener('click', createProject);
         document.getElementById('map-back-btn')?.addEventListener('click', () => switchTab('file'));
         bindPaneToggleEvents();
+        renderOfflineStatus();
+        window.addEventListener('online', renderOfflineStatus);
+        window.addEventListener('offline', renderOfflineStatus);
         document.getElementById('project-tree')?.addEventListener('click', onProjectTreeClick);
         document.getElementById('hantei-filter')?.addEventListener('change', event => {
             if (!event.target.classList.contains('hantei-cb')) return;
@@ -467,10 +599,31 @@
         });
     }
     function drawPrintVectorLayers(context, mapContainer, mapRect, target) {
-        if (typeof Path2D !== 'function') return;
         const scaleX = target.width / mapRect.width;
         const scaleY = target.height / mapRect.height;
-        mapContainer.querySelectorAll('.leaflet-overlay-pane svg').forEach(svg => {
+        const canvases = [...mapContainer.querySelectorAll('.leaflet-pane canvas')]
+            .map(canvas => ({
+                canvas,
+                rect: canvas.getBoundingClientRect(),
+                zIndex: cssNumber(window.getComputedStyle?.(canvas.parentElement)?.zIndex, 0),
+            }))
+            .filter(item => item.rect.width > 0 && item.rect.height > 0)
+            .sort((a, b) => a.zIndex - b.zIndex);
+        canvases.forEach(({ canvas, rect }) => {
+            const style = window.getComputedStyle?.(canvas);
+            context.save();
+            context.globalAlpha = cssNumber(style?.opacity, 1);
+            context.drawImage(
+                canvas,
+                target.left + (rect.left - mapRect.left) * scaleX,
+                target.top + (rect.top - mapRect.top) * scaleY,
+                rect.width * scaleX,
+                rect.height * scaleY
+            );
+            context.restore();
+        });
+        if (typeof Path2D !== 'function') return;
+        mapContainer.querySelectorAll('.leaflet-pane svg').forEach(svg => {
             const svgRect = svg.getBoundingClientRect();
             svg.querySelectorAll('path').forEach(path => {
                 const definition = path.getAttribute('d');
@@ -575,6 +728,13 @@
             }));
         return Promise.all(pending);
     }
+    function waitForLeafletPaint() {
+        const requestFrame = window.requestAnimationFrame;
+        if (typeof requestFrame !== 'function') {
+            return new Promise(resolve => window.setTimeout(resolve, 32));
+        }
+        return new Promise(resolve => requestFrame(() => requestFrame(resolve)));
+    }
     async function renderPrintJpegCanvas() {
         const mapContainer = leafletMap?.getContainer?.() || document.getElementById('leaflet-map');
         if (!mapContainer) throw new Error('地図表示が見つかりません。');
@@ -619,6 +779,7 @@
         if (button) { button.disabled = true; button.textContent = 'JPEG作成中...'; }
         try {
             beforePrint();
+            await waitForLeafletPaint();
             const canvas = await renderPrintJpegCanvas();
             const blob = await canvasToJpeg(canvas);
             const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -751,6 +912,20 @@
             renderProjectTree();
             return;
         }
+        if (button.dataset.action === 'offline-save') {
+            try {
+                const project = await ensureProjectLoaded(nendo, gyomu);
+                if (isBrowserOffline()) throw new Error('端末保存の更新にはオンライン接続が必要です。');
+                if (!window.xrdsOffline?.saveProject) throw new Error('端末保存に対応していないブラウザです。');
+                const result = await window.xrdsOffline.saveProject(project);
+                project.offlineAvailable = true;
+                project.offlineReadOnly = false;
+                await refreshProjectTree();
+                renderProjectTree();
+                status('「' + gyomu + '」を端末へ保存しました（背景地図 ' + result.tiles.cached + '/' + result.tiles.requested + '枚）。');
+            } catch (error) { alert('端末保存できません: ' + error.message); }
+            return;
+        }
         if (button.dataset.action === 'delete-facility') {
             await deleteFacility(nendo, gyomu, Number(button.dataset.featureIndex));
             return;
@@ -798,36 +973,92 @@
             await deleteProject(nendo, gyomu, row.dataset.revision);
         }
     }
-    async function ensureProjectLoaded(nendo, gyomu) {
+
+    function isBrowserOffline() {
+        return typeof navigator !== 'undefined' && navigator.onLine === false;
+    }
+    function hydrateProject(nendo, gyomu, data, readOnly) {
         const key = projectKey(nendo, gyomu);
         const cached = projectLayers[key];
-        if (cached?.dirty) return cached;
-        const response = await fetch(`/api/projects/load?nendo=${encodeURIComponent(nendo)}&gyomu=${encodeURIComponent(gyomu)}`);
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json();
+        const meta = data?.xrds_meta || {};
         if (cached) {
-            cached.features = Array.isArray(data.features) ? data.features : [];
-            cached.revision = data.xrds_meta?.revision ?? null;
-            cached.scheduleActiveImportId = data.xrds_meta?.schedule_active_import_id ?? null;
-            cached.scheduleImports = Array.isArray(data.xrds_meta?.schedule_imports) ? data.xrds_meta.schedule_imports : [];
+            cached.features = Array.isArray(data?.features) ? data.features : [];
+            cached.revision = meta.revision ?? cached.revision ?? null;
+            cached.scheduleActiveImportId = meta.schedule_active_import_id ?? null;
+            cached.scheduleImports = Array.isArray(meta.schedule_imports) ? meta.schedule_imports : [];
+            cached.offlineReadOnly = Boolean(readOnly);
+            cached.offlineAvailable = Boolean(cached.offlineAvailable || readOnly);
             cached.dirty = false;
             if (activeFeature?.project === cached) activeFeature = null;
             return cached;
         }
         projectLayers[key] = {
-            nendo, gyomu, features: Array.isArray(data.features) ? data.features : [],
-            revision: data.xrds_meta?.revision ?? null, visible: false, dirty: false,
-            scheduleActiveImportId: data.xrds_meta?.schedule_active_import_id ?? null,
-            scheduleImports: Array.isArray(data.xrds_meta?.schedule_imports) ? data.xrds_meta.schedule_imports : [],
+            nendo, gyomu, features: Array.isArray(data?.features) ? data.features : [],
+            revision: meta.revision ?? null, visible: false, dirty: false,
+            offlineAvailable: Boolean(readOnly), offlineReadOnly: Boolean(readOnly),
+            scheduleActiveImportId: meta.schedule_active_import_id ?? null,
+            scheduleImports: Array.isArray(meta.schedule_imports) ? meta.schedule_imports : [],
             leafletGroup: L.layerGroup(),
         };
         return projectLayers[key];
     }
+    async function loadOfflineProject(nendo, gyomu) {
+        if (!window.xrdsOffline?.getProject) return null;
+        try { return await window.xrdsOffline.getProject(nendo, gyomu); } catch (error) { return null; }
+    }
+    function mergeProjectTrees(serverTree, cachedProjects) {
+        const merged = (serverTree || []).map(year => ({
+            nendo: year.nendo,
+            projects: (year.projects || []).map(project => ({ ...project })),
+        }));
+        (cachedProjects || []).forEach(local => {
+            let year = merged.find(item => item.nendo === local.nendo);
+            if (!year) { year = { nendo: local.nendo, projects: [] }; merged.push(year); }
+            let project = year.projects.find(item => item.gyomu === local.gyomu);
+            if (!project) {
+                project = { gyomu: local.gyomu, count: local.features?.length || 0, revision: local.revision, offline: true };
+                year.projects.push(project);
+            } else {
+                project.offline = true;
+            }
+            project.offline_saved_at = local.saved_at || '';
+        });
+        return merged.sort((a, b) => String(a.nendo).localeCompare(String(b.nendo), 'ja'));
+    }
+    async function ensureProjectLoaded(nendo, gyomu) {
+        const key = projectKey(nendo, gyomu);
+        const cached = projectLayers[key];
+        if (cached?.dirty) return cached;
+        const local = await loadOfflineProject(nendo, gyomu);
+        if (isBrowserOffline() && local) return hydrateProject(nendo, gyomu, local, true);
+        try {
+            const response = await fetch('/api/projects/load?nendo=' + encodeURIComponent(nendo) + '&gyomu=' + encodeURIComponent(gyomu));
+            if (!response.ok) throw new Error(await response.text());
+            return hydrateProject(nendo, gyomu, await response.json(), false);
+        } catch (error) {
+            if (local) return hydrateProject(nendo, gyomu, local, true);
+            throw error;
+        }
+    }
     async function refreshProjectTree() {
-        const response = await fetch('/api/projects');
-        if (!response.ok) throw new Error(await response.text());
-        projectTreeData = (await response.json()).tree || [];
-        populateDatalists(); renderProjectTree();
+        let serverTree = null;
+        let serverError = null;
+        try {
+            const response = await fetch('/api/projects');
+            if (!response.ok) throw new Error(await response.text());
+            serverTree = (await response.json()).tree || [];
+        } catch (error) {
+            serverError = error;
+        }
+        try {
+            offlineProjects = window.xrdsOffline?.listProjects ? await window.xrdsOffline.listProjects() : [];
+        } catch (error) {
+            offlineProjects = [];
+        }
+        if (serverTree === null && !offlineProjects.length) throw serverError || new Error('保存済み業務を読み込めません。');
+        projectTreeData = mergeProjectTrees(serverTree || [], offlineProjects);
+        populateDatalists(); renderProjectTree(); renderOfflineStatus();
+        if (serverError && offlineProjects.length) status('サーバー未接続のため、端末保存業務を表示しています。');
     }
     function populateDatalists() {
         const years = document.getElementById('nendo-datalist');
@@ -955,9 +1186,10 @@
             ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coord.lat},${coord.lng}`)}`
             : '';
     }
-    function renderProjectFacilityList(project) {
+        function renderProjectFacilityList(project) {
         if (!project) return '<div class="map-project-facilities-empty">施設データを読み込めません。</div>';
         if (!project.features.length) return '<div class="map-project-facilities-empty">登録施設はありません。</div>';
+        const mobileMode = Boolean(window.XRDS_MOBILE_MODE);
         return '<div class="map-project-facilities">' + project.features.map((feature, index) => {
             const name = getFeatureDisplayName(feature, index);
             const googleUrl = getGoogleMapsUrl(feature);
@@ -972,15 +1204,13 @@
             const equipmentMarker = equipmentColor
                 ? '<i class="map-facility-equipment-marker" style="background-color:' + equipmentColor + ';" title="使用機材: ' + escapeHtml(equipment) + '"></i>'
                 : '<i class="map-facility-equipment-marker empty" aria-hidden="true"></i>';
+            const deleteButton = mobileMode ? '' : '<button type="button" class="map-facility-delete" data-action="delete-facility" data-feature-index="' + index + '" title="' + escapeHtml(name) + 'を業務から除外">削除</button>';
             return '<div class="map-facility-row' + selected + '">' +
                 '<button type="button" class="map-facility-jump" data-action="jump-facility" data-feature-index="' + index + '" title="' + escapeHtml(name) + 'へ移動">' +
                 equipmentMarker + '<span class="map-facility-index">' + (index + 1) + '.</span><span class="map-facility-name-wrap"><span class="map-facility-name">' + escapeHtml(name) + '</span>' + statusBadge + '</span></button>' +
-                google +
-                '<button type="button" class="map-facility-delete" data-action="delete-facility" data-feature-index="' + index + '" title="' + escapeHtml(name) + 'を業務から除外">削除</button>' +
-                '</div>';
+                google + deleteButton + '</div>';
         }).join('') + '</div>';
-    }
-    function adjustActiveFeatureAfterRemoval(project, removedIndex) {
+    }function adjustActiveFeatureAfterRemoval(project, removedIndex) {
         if (!activeFeature || activeFeature.project !== project) return;
         if (activeFeature.index === removedIndex) {
             activeFeature = null;
@@ -1008,9 +1238,10 @@
         renderVisibleMarkers();
         renderDetail();
         status('「' + name + '」を業務から除外しました。保存すると共有データへ反映されます。');
-    }    function renderProjectTree() {
+    }        function renderProjectTree() {
         const container = document.getElementById('project-tree');
         if (!container) return;
+        const mobileMode = Boolean(window.XRDS_MOBILE_MODE);
         const query = (document.getElementById('map-project-search')?.value || '').trim().toLowerCase();
         let total = 0;
         let html = '';
@@ -1022,21 +1253,25 @@
                 total++;
                 const key = projectKey(year.nendo, project.gyomu);
                 const loaded = projectLayers[key];
+                const offline = Boolean(loaded?.offlineAvailable || project.offline);
                 const active = activeProjectKey === key ? ' active' : '';
                 const visible = loaded?.visible;
                 const facilitiesExpanded = expandedProjectFacilities.has(key);
                 const dirty = loaded?.dirty ? ' <span style="color:#b45309;">●未保存</span>' : '';
                 const featureCount = loaded?.features?.length ?? project.count;
-                html += `<div class="map-project-row${active}" data-project-key="${escapeHtml(key)}" data-revision="${escapeHtml(project.revision)}">
-                    <div style="font-weight:700; font-size:13px;">${escapeHtml(project.gyomu)}</div>
-                    <div style="font-size:12px; color:var(--text-light);">${featureCount}件${dirty}</div>
-                    <div class="map-project-actions">
-                      <button class="map-mini-btn primary" data-action="show">${visible ? '地図から隠す' : '地図に表示'}</button>
+                const actionHtml = mobileMode
+                    ? `<button class="map-mini-btn primary" data-action="show">${visible ? '地図から隠す' : '地図に表示'}</button>
+                      <button class="map-mini-btn" data-action="toggle-facilities" aria-expanded="${facilitiesExpanded}">${facilitiesExpanded ? '▼ 施設一覧を隠す' : '▶ 施設一覧を表示'}</button>
+                      <button class="map-mini-btn map-device-btn" data-action="offline-save">${offline ? '📱この端末を更新' : '📱この端末に保存'}</button>`
+                    : `<button class="map-mini-btn primary" data-action="show">${visible ? '地図から隠す' : '地図に表示'}</button>
                       <button class="map-mini-btn" data-action="edit">編集</button>
                       <button class="map-mini-btn" data-action="toggle-facilities" aria-expanded="${facilitiesExpanded}">${facilitiesExpanded ? '▼ 施設一覧を隠す' : '▶ 施設一覧を表示'}</button>
                       <button class="map-mini-btn" data-action="zip">QGIS Zip</button>
-                      <button class="map-mini-btn danger" data-action="delete-project">削除</button>
-                    </div>
+                      <button class="map-mini-btn map-device-btn" data-action="offline-save">📱持ち出し保存／更新</button>
+                      <button class="map-mini-btn danger" data-action="delete-project">削除</button>`;                html += `<div class="map-project-row${active}" data-project-key="${escapeHtml(key)}" data-revision="${escapeHtml(project.revision)}">
+                    <div style="font-weight:700; font-size:13px;">${escapeHtml(project.gyomu)}</div>
+                    <div style="font-size:12px; color:var(--text-light);">${featureCount}件${dirty}${offline ? ' <span class="map-offline-badge">📱端末保存済</span>' : ''}</div>
+                    <div class="map-project-actions">${actionHtml}</div>
                     ${facilitiesExpanded ? renderProjectFacilityList(loaded) : ''}
                 </div>`;
             });
@@ -1044,8 +1279,7 @@
         });
         container.innerHTML = html || '<p class="map-detail-empty">該当する保存業務はありません。</p>';
         const count = document.getElementById('map-project-count'); if (count) count.textContent = `${total}業務`;
-    }
-    function fitToVisible() {
+    }function fitToVisible() {
         const points = [];
         Object.values(projectLayers).filter(project => project.visible).forEach(project => project.features.forEach(feature => {
             const coord = getCoordinates(feature); if (coord) points.push([coord.lat, coord.lng]);
@@ -1282,10 +1516,9 @@
         const obstaclePoints = [];
         clusters.forEach(cluster => {
             const center = [cluster.lat / cluster.count, cluster.lng / cluster.count];
-            const color = getColorFor(cluster.hanteiKey);
             const marker = L.circleMarker(center, {
                 radius: Math.min(20, 7 + Math.log2(cluster.count + 1) * 2),
-                color: color.border, weight: 2, fillColor: color.fill, fillOpacity: .9,
+                color: PIN_COLOR, weight: 2, fillColor: PIN_COLOR, fillOpacity: .9,
             });
             marker.bindTooltip(`${cluster.count}地点（拡大すると個別表示）`, { sticky: true });
             marker.on('click', () => {
@@ -1299,6 +1532,7 @@
         return { clusterCount: clusters.size, obstaclePoints };
     }
     function renderLabels(entries, extraObstaclePoints = []) {
+        const mobileMode = Boolean(window.XRDS_MOBILE_MODE);
         const mapSize = leafletMap.getSize();
         const ordered = [...entries].sort((a, b) => {
             const aSelected = activeFeature && activeFeature.project === a.project && activeFeature.index === a.index;
@@ -1314,7 +1548,7 @@
                 : '';
             const title = scheduleText ? baseTitle + ' | ' + scheduleText : baseTitle;
             const equipment = String(properties.XRDS_equipment || '').trim();
-            const equipmentBorderColor = displayOptions.equipmentBorders ? getEquipmentBorderColor(equipment) : null;
+            const equipmentBorderColor = (displayOptions.equipmentBorders || mobileMode) ? getEquipmentBorderColor(equipment) : null;
             const point = leafletMap.latLngToContainerPoint([entry.coord.lat, entry.coord.lng]);
             const printAnchor = printMode ? getPrintLabelAnchor(entry.feature) : null;
             const width = Math.min(mapSize.x - 8, estimateLabelWidth(title) + (equipmentBorderColor ? 6 : 0));
@@ -1436,10 +1670,9 @@
         }
         entries.forEach(entry => {
             const selected = activeFeature && activeFeature.project === entry.project && activeFeature.index === entry.index;
-            const color = getColorFor(getHanteiKey(entry.feature.properties));
             const marker = L.circleMarker([entry.coord.lat, entry.coord.lng], {
-                radius: selected ? 9 : 6, color: selected ? '#0f3d56' : color.border, weight: selected ? 3 : 1,
-                fillColor: color.fill, fillOpacity: 1,
+                radius: selected ? 9 : 6, color: PIN_COLOR, weight: selected ? 3 : 1,
+                fillColor: PIN_COLOR, fillOpacity: 1,
             });
             const schedulePopup = renderScheduleDetail(entry.feature.properties);
             if (schedulePopup) marker.bindPopup(schedulePopup, { maxWidth: 320 });
@@ -1449,21 +1682,45 @@
         const labelResult = renderLabels(entries);
         const canvasStatus = document.getElementById('map-canvas-status');
         if (canvasStatus) canvasStatus.textContent = `${entries.length}地点・${labelResult.placed}件のラベルを表示中。${labelResult.unplaced ? `表示領域に収まらないラベル: ${labelResult.unplaced}件。` : ''}`;
-    }    function renderDetail() {
+    }        function renderDetail() {
         const panel = document.getElementById('map-detail-panel');
         if (!panel) return;
         const project = activeProjectKey && projectLayers[activeProjectKey];
         const pendingCount = getPendingSearchCount();
-        if (!project) { panel.innerHTML = `<div class="map-detail-empty">${pendingCount ? `<strong>${pendingCount}件の検索結果を保持しています。</strong><br>` : ""}左の既存業務にある「編集」を押して、追加先の業務を選択してください。</div>`; return; }
+        const mobileMode = Boolean(window.XRDS_MOBILE_MODE);
+        const readOnly = Boolean(project?.offlineReadOnly);
+        if (mobileMode && activeFeature?.project === project) setPaneCollapsed('right', false);
+        if (!project) {
+            panel.innerHTML = `<div class="map-detail-empty">${pendingCount && !mobileMode ? `<strong>${pendingCount}件の検索結果を保持しています。</strong><br>` : ''}${mobileMode ? '左の保存済み業務を選択してください。' : '左の既存業にある「編集」を押して、追加先の業務を選択してください。'}</div>`;
+            return;
+        }
         if (!activeFeature || activeFeature.project !== project) {
+            if (mobileMode) {
+                panel.innerHTML = `<h3 class="map-panel-title">${escapeHtml(project.nendo)} / ${escapeHtml(project.gyomu)}</h3>
+                  <p style="font-size:13px;line-height:1.6;">${project.features.length}件。地図上の地点または左の施設一覧を押すと詳細を表示します。</p>
+                  <p class="map-offline-badge">📱持ち出し版・閲覧専用</p>
+                  <div class="map-inline-actions"><button class="map-mini-btn primary" data-detail-action="fit-project">この業務に移動</button></div>`;
+                return;
+            }
             panel.innerHTML = `<h3 class="map-panel-title">${escapeHtml(project.nendo)} / ${escapeHtml(project.gyomu)}</h3>
-              <p style="font-size:13px;line-height:1.6;">${project.features.length}件。地図上の地点を押すと詳細・編集画面を開きます。</p>${pendingCount ? `<p style="font-size:12px;line-height:1.5;color:#175c36;background:#e8f8ee;padding:9px;border-radius:7px;"><strong>${pendingCount}件の検索結果を追加できます。</strong></p>` : ""}
-              <div class="map-inline-actions"><button class="map-mini-btn primary" data-detail-action="add-search">選択した検索結果を追加${pendingCount ? `（${pendingCount}件）` : ""}</button><button class="map-mini-btn" data-detail-action="add-empty-feature">空の地点を追加</button><button class="map-mini-btn primary" data-detail-action="save-project">この業務を保存</button><button class="map-mini-btn" data-detail-action="fit-project">この業務に移動</button></div>${renderSchedulePanel(project)}`;
+              <p style="font-size:13px;line-height:1.6;">${project.features.length}件。地図上の地点を押すと詳細・編集画面を開きます。</p>${readOnly ? '<p class="map-offline-badge">📱オフライン持ち出しデータ（閲覧専用）</p>' : ''}${pendingCount ? `<p style="font-size:12px;line-height:1.5;color:#175c36;background:#e8f8ee;padding:9px;border-radius:7px;"><strong>${pendingCount}件の検索結果を追加できます。</strong></p>` : ''}
+              <div class="map-inline-actions"><button class="map-mini-btn primary" data-detail-action="add-search">選択した検索結果を追加${pendingCount ? `（${pendingCount}件）` : ''}</button><button class="map-mini-btn" data-detail-action="add-empty-feature">空の地点を追加</button><button class="map-mini-btn primary" data-detail-action="save-project">この業務を保存</button><button class="map-mini-btn" data-detail-action="fit-project">この業務に移動</button></div>${renderSchedulePanel(project)}`;
             return;
         }
         const { feature, index } = activeFeature; const props = feature.properties || {}; const coord = getCoordinates(feature);
         const equipment = String(props.XRDS_equipment || '').trim();
         const customEquipment = Boolean(equipment) && !EQUIPMENT_OPTIONS.includes(equipment);
+        if (mobileMode) {
+            const noteToken = ++mobileNoteRenderToken;
+            panel.innerHTML = `<h3 class="map-panel-title">地点詳細 <span style="font-size:12px;color:var(--text-light);">${escapeHtml(project.gyomu)} / ${index + 1}</span></h3>
+              <p class="map-mobile-readonly-note">持ち出し版は閲覧専用です。編集はPC版で行ってください。</p>
+              <div class="map-readonly-summary"><strong>${escapeHtml(getFeatureDisplayName(feature, index))}</strong>${props.XRDS_work_status ? `<span>進捗: ${escapeHtml(props.XRDS_work_status)}</span>` : ''}${equipment ? `<span>使用機材: ${escapeHtml(equipment)}</span>` : ''}${coord ? `<span>緯度経度: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>` : ''}</div>
+              ${renderScheduleDetail(props)}
+              ${renderOriginalAttributes(props)}
+              ${renderMobileNotePanel()}`;
+            hydrateMobileNotePanel(project, feature, noteToken);
+            return;
+        }
         panel.innerHTML = `<h3 class="map-panel-title">地点を編集 <span style="font-size:12px;color:var(--text-light);">${escapeHtml(project.gyomu)}</span></h3>
           <div class="map-editor"><label>元の施設名<input value="${escapeHtml(props.DPF_title || '')}" readonly></label>
           <label>地図上の表示名（社内用）<input id="map-edit-display-name" value="${escapeHtml(props.XRDS_display_name || '')}" placeholder="未入力なら元の施設名を表示"></label>
@@ -1480,8 +1737,7 @@
           ${renderOriginalAttributes(props)}
           <div class="map-inline-actions"><button class="map-mini-btn primary" data-detail-action="apply-feature">編集を反映</button><button class="map-mini-btn primary" data-detail-action="save-project">この業務を保存</button><button class="map-mini-btn" data-detail-action="move-feature">地図をクリックして移動</button><button class="map-mini-btn" data-detail-action="add-empty-feature">空の地点を追加</button><button class="map-mini-btn danger" data-detail-action="remove-feature">この地点を業務から除外</button></div>
           <p style="font-size:12px;color:var(--text-light);">反映後も「この業務を保存」を押すまでは共有データへ書き込みません。</p></div>`;
-    }
-    function applyActiveFeatureForm(project) {
+    }function applyActiveFeatureForm(project) {
         if (!activeFeature || activeFeature.project !== project) return false;
         const displayNameInput = document.getElementById('map-edit-display-name');
         if (!displayNameInput) return false;
@@ -1566,6 +1822,12 @@
         const button = event.target.closest('[data-detail-action]'); if (!button) return;
         const action = button.dataset.detailAction; const project = activeProjectKey && projectLayers[activeProjectKey];
         if (!project) return;
+        if (action === 'save-mobile-note') return saveMobileNote(project);
+        if (action === 'delete-mobile-note') return deleteMobileNote(project);
+        if (project.offlineReadOnly && ['add-search', 'add-empty-feature', 'save-project', 'apply-feature', 'move-feature', 'remove-feature', 'schedule-preview', 'schedule-apply', 'schedule-detach'].includes(action)) {
+            alert('オフライン持ち出しデータは閲覧専用です。オンラインに戻ってから編集してください。');
+            return;
+        }
         if (action === 'schedule-preview') { return previewSchedule(project); }
         if (action === 'schedule-apply') { return applySchedule(project); }
         if (action === 'schedule-detach') { return detachSchedule(project); }
@@ -1631,6 +1893,9 @@
         }
     }
     async function saveProject(project) {
+        if (project?.offlineReadOnly) {
+            throw new Error('オフライン持ち出しデータは閲覧専用です。オンラインに戻ってから編集してください。');
+        }
         const request = async revision => fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nendo: project.nendo, gyomu: project.gyomu, features: project.features, base_revision: revision }) });
         let response = await request(project.revision);
         if (response.status === 409) { const conflict = await response.json(); if (!confirm(`${conflict.error}\n\n最新の保存内容を上書きしますか？`)) return false; response = await request(conflict.current_revision); }

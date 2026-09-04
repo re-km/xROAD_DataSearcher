@@ -22,7 +22,7 @@ from projects_store import ProjectsStore, ConflictError
 # API Endpoint
 XROAD_API_URL = "https://road-structures-db.mlit.go.jp/xROAD/api/v1/bridges"
 MAX_PROJECT_REQUEST_BYTES = 20 * 1024 * 1024
-STATIC_ALLOWED_SUFFIXES = {'.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.map'}
+STATIC_ALLOWED_SUFFIXES = {'.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.map', '.webmanifest'}
 
 _SETTINGS_CACHE = None
 
@@ -672,87 +672,87 @@ class RequestHandler(SimpleHTTPRequestHandler):
                         url = f"https://road-structures-db.mlit.go.jp/xROAD/api/v1/{ep}?{query}"
                         
                         req = urllib.request.Request(url)
-                    try:
-                        with urllib.request.urlopen(req) as res:
-                            body = res.read()
-                            data = json.loads(body.decode('utf-8'))
-                            
-                            results = data.get('result', [])
-                            for item in results:
-                                syogen = item.get('syogen', {})
-                                tenken = item.get('tenken', {})
+                        try:
+                            with urllib.request.urlopen(req) as res:
+                                body = res.read()
+                                data = json.loads(body.decode('utf-8'))
                                 
-                                ido = syogen.get('ichi', {}).get('ido')
-                                keido = syogen.get('ichi', {}).get('keido')
-                                
-                                if ido is not None and keido is not None:
-                                    facility_name = syogen.get("shisetsu", {}).get("meisyou", "不明")
-                                    ichi_data = syogen.get("ichi", {})
-                                    gyousei_data = syogen.get("gyousei_kuiki", {})
-                                    facility_pref = (
-                                        gyousei_data.get("todoufuken_mei")
-                                        or ichi_data.get("todofuken_meisyou", "不明")
-                                    )
-                                    facility_city = (
-                                        gyousei_data.get("shikuchouson_mei")
-                                        or ichi_data.get("shikutyouson_meisyou", "")
-                                    )
-                                    normalized_city = unicodedata.normalize(
-                                        'NFKC', str(facility_city or "")
-                                    ).replace(' ', '').replace('　', '').casefold()
-                                    if city_filter and city_filter not in normalized_city:
-                                        continue
-                                    location_str = f"{facility_pref}{facility_city}"
+                                results = data.get('result', [])
+                                for item in results:
+                                    syogen = item.get('syogen', {})
+                                    tenken = item.get('tenken', {})
                                     
-                                    kanrisya_name = syogen.get("kanrisya", {}).get("meisyou", "")
-                                    rosen_name = syogen.get("rosen", {}).get("meisyou", "")
+                                    ido = syogen.get('ichi', {}).get('ido')
+                                    keido = syogen.get('ichi', {}).get('keido')
                                     
-                                    # Feature construction format
-                                    properties = {
-                                        "DPF_title": facility_name,
-                                        "RSDB_tenken_kiroku_hantei_kubun": tenken.get("kiroku", {}).get("hantei_kubun", ""),
-                                        "kasetsu_nendo": syogen.get("kasetsu_nendo", ""),
-                                        "fukuin": syogen.get("fukuin", ""),
-                                        "kyouchou": syogen.get("kyouchou", "")
-                                    }
-                                    
-                                    # Flatten all other attributes into properties so they appear in QGIS
-                                    flat_item = RequestHandler.flatten_dict(item)
-                                    for k, v in flat_item.items():
-                                        if k not in properties:
-                                            properties[k] = v
-
-                                    feature = {
-                                        "type": "Feature",
-                                        "geometry": {
-                                            "type": "Point",
-                                            "coordinates": [keido, ido]
-                                        },
-                                        "properties": properties
-                                    }
-                                    
-                                    candidate = {
-                                        "facility_id": item.get("shisetsu_id", ""),
-                                        "facility_type": ep,
-                                        "facility_name": facility_name,
-                                        "location": location_str,
-                                        "bridge_length": syogen.get("kyouchou", ""),
-                                        "bridge_width": syogen.get("fukuin", ""),
-                                        "kanrisya": kanrisya_name,
-                                        "rosen": rosen_name,
-                                        "feature": feature
-                                    }
-                                    
-                                    # Prevent duplicate candidates since we might query both narrow and wide names
-                                    is_duplicate = any(
-                                        existing.get('facility_id') == candidate['facility_id']
-                                        for existing in search_results[name]
-                                    )
-                                    
-                                    if not is_duplicate:
-                                        search_results[name].append(candidate)
-                    except Exception as e:
-                        print(f"Error fetching {name} from {ep}: {e}")
+                                    if ido is not None and keido is not None:
+                                        facility_name = syogen.get("shisetsu", {}).get("meisyou", "不明")
+                                        ichi_data = syogen.get("ichi", {})
+                                        gyousei_data = syogen.get("gyousei_kuiki", {})
+                                        facility_pref = (
+                                            gyousei_data.get("todoufuken_mei")
+                                            or ichi_data.get("todofuken_meisyou", "不明")
+                                        )
+                                        facility_city = (
+                                            gyousei_data.get("shikuchouson_mei")
+                                            or ichi_data.get("shikutyouson_meisyou", "")
+                                        )
+                                        normalized_city = unicodedata.normalize(
+                                            'NFKC', str(facility_city or "")
+                                        ).replace(' ', '').replace('　', '').casefold()
+                                        if city_filter and city_filter not in normalized_city:
+                                            continue
+                                        location_str = f"{facility_pref}{facility_city}"
+                                        
+                                        kanrisya_name = syogen.get("kanrisya", {}).get("meisyou", "")
+                                        rosen_name = syogen.get("rosen", {}).get("meisyou", "")
+                                        
+                                        # Feature construction format
+                                        properties = {
+                                            "DPF_title": facility_name,
+                                            "RSDB_tenken_kiroku_hantei_kubun": tenken.get("kiroku", {}).get("hantei_kubun", ""),
+                                            "kasetsu_nendo": syogen.get("kasetsu_nendo", ""),
+                                            "fukuin": syogen.get("fukuin", ""),
+                                            "kyouchou": syogen.get("kyouchou", "")
+                                        }
+                                        
+                                        # Flatten all other attributes into properties so they appear in QGIS
+                                        flat_item = RequestHandler.flatten_dict(item)
+                                        for k, v in flat_item.items():
+                                            if k not in properties:
+                                                properties[k] = v
+    
+                                        feature = {
+                                            "type": "Feature",
+                                            "geometry": {
+                                                "type": "Point",
+                                                "coordinates": [keido, ido]
+                                            },
+                                            "properties": properties
+                                        }
+                                        
+                                        candidate = {
+                                            "facility_id": item.get("shisetsu_id", ""),
+                                            "facility_type": ep,
+                                            "facility_name": facility_name,
+                                            "location": location_str,
+                                            "bridge_length": syogen.get("kyouchou", ""),
+                                            "bridge_width": syogen.get("fukuin", ""),
+                                            "kanrisya": kanrisya_name,
+                                            "rosen": rosen_name,
+                                            "feature": feature
+                                        }
+                                        
+                                        # Prevent duplicate candidates since we might query both narrow and wide names
+                                        is_duplicate = any(
+                                            existing.get('facility_id') == candidate['facility_id']
+                                            for existing in search_results[name]
+                                        )
+                                        
+                                        if not is_duplicate:
+                                            search_results[name].append(candidate)
+                        except Exception as e:
+                            print(f"Error fetching {name} from {ep}: {e}")
             
             # Return JSON instead of ZIP
             self.send_response(200)
@@ -1057,8 +1057,8 @@ def main():
     os.chdir(script_dir)
 
     settings = load_settings()
-    configured_host = str(settings.get("bind_host", "")).strip()
-    configured_port = settings.get("port") or 0
+    configured_host = str(os.environ.get("XRDS_BIND_HOST", settings.get("bind_host", ""))).strip()
+    configured_port = os.environ.get("XRDS_PORT") or settings.get("port") or 0
 
     # 未設定時はlocalhost限定+動的ポート（安全側デフォルト）。共有時はbind_host/portを明示指定するopt-in。
     bind_host = configured_host if configured_host else 'localhost'
@@ -1088,7 +1088,8 @@ def main():
         time.sleep(2)
         webbrowser.open(f"http://localhost:{port}" if bind_host not in ('localhost', '127.0.0.1') else url)
 
-    threading.Thread(target=open_browser, daemon=True).start()
+    if str(os.environ.get("XRDS_NO_BROWSER", "")).strip().lower() not in ("1", "true", "yes"):
+        threading.Thread(target=open_browser, daemon=True).start()
 
     try:
         httpd = ThreadingHTTPServer(server_address, RequestHandler)

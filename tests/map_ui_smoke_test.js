@@ -25,6 +25,8 @@ const instrumented = source.replace(
         displayOptions() { return { ...displayOptions }; },
         printDisplayOptions() { return { ...printDisplayOptions }; },
         getPrintPaperSpec,
+        drawPrintVectorLayers,
+        waitForLeafletPaint,
         onDetailClick,
         onDetailChange,
         onMapClick,
@@ -40,6 +42,15 @@ const instrumented = source.replace(
 assert.notEqual(instrumented, source, 'map.js のテストフックを挿入できません');
 assert.match(source, /SCHEDULE_LABEL_ZOOM_THRESHOLD = 14/);
 assert.match(source, /leafletMap\.on\('zoomend'/);
+assert.match(source, /PIN_COLOR = '#000000'/);
+assert.ok(source.includes('color: PIN_COLOR, weight: 2, fillColor: PIN_COLOR'));
+assert.ok(source.includes('radius: selected ? 9 : 6, color: PIN_COLOR, weight: selected ? 3 : 1,'));
+assert.ok(source.includes('fillColor: PIN_COLOR, fillOpacity: 1,'));
+assert.match(source, /leaflet-pane canvas/);
+assert.ok(source.includes('context.drawImage('));
+assert.match(source, /leaflet-pane svg/);
+assert.match(source, /typeof Path2D !== 'function'/);
+assert.ok(source.includes('const color = getColorFor(getHanteiKey(entry.feature.properties));'));
 const elements = {
     'map-detail-panel': { innerHTML: '' },
 };
@@ -60,7 +71,11 @@ const context = {
             return elements[id] || null;
         },
     },
-    window: {},
+    window: {
+        getComputedStyle(element) {
+            return { zIndex: element?.dataset?.zIndex || 'auto', opacity: '1' };
+        },
+    },
     async fetch(url, options = {}) {
         if (url === '/api/projects/save') {
             savedPayload = JSON.parse(options.body);
@@ -86,6 +101,38 @@ vm.createContext(context);
 vm.runInContext(instrumented, context, { filename: mapPath });
 
 const test = context.window.__xrdsMapTest;
+const vectorDraws = [];
+const vectorContext = {
+    save() {},
+    restore() {},
+    drawImage(...args) { vectorDraws.push(args); },
+};
+const canvasA = {
+    parentElement: { dataset: { zIndex: '350' } },
+    getBoundingClientRect() { return { left: 100, top: 50, width: 400, height: 200 }; },
+};
+const canvasB = {
+    parentElement: { dataset: { zIndex: '400' } },
+    getBoundingClientRect() { return { left: 110, top: 60, width: 200, height: 100 }; },
+};
+const vectorMapContainer = {
+    querySelectorAll(selector) {
+        if (selector === '.leaflet-pane canvas') return [canvasB, canvasA];
+        if (selector === '.leaflet-pane svg') return [];
+        return [];
+    },
+};
+test.drawPrintVectorLayers(
+    vectorContext,
+    vectorMapContainer,
+    { left: 100, top: 50, width: 400, height: 200 },
+    { left: 10, top: 20, width: 800, height: 400 },
+);
+assert.equal(vectorDraws.length, 2);
+assert.equal(vectorDraws[0][0], canvasA);
+assert.deepEqual(vectorDraws[0].slice(1), [10, 20, 800, 400]);
+assert.equal(vectorDraws[1][0], canvasB);
+assert.deepEqual(vectorDraws[1].slice(1), [30, 40, 400, 200]);
 const project = {
     nendo: '2026年度',
     gyomu: 'UIテスト業務',
@@ -124,6 +171,18 @@ const projectTreeAction = (action, featureIndex) => {
 };
 
 (async () => {
+    const paintFrames = [];
+    context.window.requestAnimationFrame = callback => {
+        paintFrames.push(callback);
+        return paintFrames.length;
+    };
+    const paintPromise = test.waitForLeafletPaint();
+    assert.equal(paintFrames.length, 1);
+    paintFrames.shift()();
+    assert.equal(paintFrames.length, 1);
+    paintFrames.shift()();
+    await paintPromise;
+
     test.seed(project);
     test.renderDetail();
     assert.match(elements['map-detail-panel'].innerHTML, /この業務を保存/);
@@ -288,7 +347,7 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=24/);
+    assert.match(indexHtml, /static\/map\.js\?v=31/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);
     assert.match(indexHtml, /id="map-equipment-border-toggle"/);
     assert.match(indexHtml, /id="map-print-header-toggle"/);
@@ -302,6 +361,10 @@ const projectTreeAction = (action, featureIndex) => {
     assert.match(indexHtml, /xrds-print-show-pane-tabs/);
     assert.match(indexHtml, /value="A3">A3横/);
     assert.match(source, /XRDS_print_label_anchor/);
+    assert.match(source, /data-detail-action=\"save-mobile-note\"/);
+    assert.match(source, /data-detail-action=\"delete-mobile-note\"/);
+    assert.match(source, /window\.xrdsOffline\?\.saveNote/);
+    assert.match(source, /window\.xrdsOffline\?\.deleteNote/);
 
     await test.onProjectTreeClick(projectTreeAction('toggle-facilities'));
     assert.match(elements['project-tree'].innerHTML, /map-facility-delete/);

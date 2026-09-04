@@ -1,0 +1,14 @@
+{
+  "name": "xROAD 持ち出し地図",
+  "short_name": "xROAD持ち出し",
+  "description": "保存済み業務を現場で確認するための閲覧専用オフライン地図",
+  "start_url": "/mobile.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf2f0",
+  "theme_color": "#2563eb",
+  "lang": "ja",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

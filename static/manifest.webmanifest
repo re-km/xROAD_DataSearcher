@@ -1,0 +1,18 @@
+{
+  "name": "xROAD オフライン地図",
+  "short_name": "xROAD地図",
+  "description": "保存済み業務を現場で確認するためのオフライン地図",
+  "start_url": "/index.html?tab=map",
+  "display": "standalone",
+  "background_color": "#edf2f0",
+  "theme_color": "#2563eb",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

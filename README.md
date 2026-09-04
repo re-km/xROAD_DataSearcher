@@ -110,3 +110,7 @@ UI上部のタブから切り替えることで、以下のxROADデータセッ�
 ### 5. 利用者への案内
 
 - アクセスURL、共有ユーザー名・パスワード、[使い方ガイド.html](使い方ガイド.html)を伝えれば、利用者側は何もインストールせずにブラウザだけで使い始められます。
+
+### 6. 会社用PCのTailnet公開
+
+会社用PCでのxROAD起動とGenPDFとのポート分離は、[会社PC_xROAD起動手順.html](会社PC_xROAD起動手順.html)を参照してください。`start-xROAD-Tailnet.cmd` をダブルクリックすると起動します。xROADはHTTPS 8445（代替8446）、GenPDFは既存のHTTPS 8444を使用します。iPhoneの持ち出し画面は `https://maejima.tail9ede56.ts.net:8445/mobile.html` を開きます。

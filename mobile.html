@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="xROAD持ち出し地図">
+    <link rel="manifest" href="/static/manifest-mobile.webmanifest">
+    <link rel="apple-touch-icon" href="/static/icon.svg">
+    <link rel="stylesheet" href="/static/leaflet/leaflet.css">
+    <title>xROAD 持ち出し地図</title>
+    <style>
+        :root { --primary-color:#1e3a8a; --text-color:#1f2937; --text-light:#64748b; --border-color:#d7dee5; }
+        * { box-sizing: border-box; }
+        html, body { width:100%; height:100%; margin:0; }
+        body { overflow:hidden; color:var(--text-color); background:#edf2f0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif; }
+        button, input, textarea { font:inherit; }
+        body.map-workspace-open { overflow:hidden; }
+        #tab-content-map.map-workspace { position:fixed; inset:0; z-index:1; display:grid; grid-template-columns:minmax(250px,330px) minmax(0,1fr) minmax(290px,390px); grid-template-rows:58px minmax(0,1fr); margin:0; padding:0; background:#edf2f0; overflow:hidden; }
+        .map-workspace-toolbar { grid-column:1 / -1; display:flex; align-items:center; gap:9px; min-width:0; padding:9px 14px; background:#fffdf8; border-bottom:1px solid var(--border-color); }
+        .map-workspace-toolbar h2 { margin:0; font-size:19px; white-space:nowrap; }
+        #map-workspace-status { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-light); font-size:12px; }
+        #map-offline-status { flex:0 0 auto; color:var(--text-light); font-size:11px; white-space:nowrap; }
+        .mobile-readonly-badge { flex:0 0 auto; padding:4px 7px; border-radius:999px; background:#e0e7ff; color:#3730a3; font-size:10px; font-weight:700; white-space:nowrap; }
+        .map-workspace-pane { min-height:0; overflow:auto; padding:13px; background:#fffdf8; border-right:1px solid var(--border-color); -webkit-overflow-scrolling:touch; }
+        .map-workspace-pane.left { grid-column:1; grid-row:2; }
+        .map-workspace-pane.right { grid-column:3; grid-row:2; border-right:0; border-left:1px solid var(--border-color); }
+        .map-workspace-canvas { position:relative; grid-column:2; grid-row:2; min-width:0; min-height:0; background:#dce8e4; }
+        #leaflet-map { position:absolute; inset:0; }
+        .map-workspace.map-left-collapsed .map-workspace-pane.left, .map-workspace.map-right-collapsed .map-workspace-pane.right { display:none; }
+        .map-workspace.map-left-collapsed { grid-template-columns:0 minmax(0,1fr) minmax(290px,390px); }
+        .map-workspace.map-right-collapsed { grid-template-columns:minmax(250px,330px) minmax(0,1fr) 0; }
+        .map-workspace.map-left-collapsed.map-right-collapsed { grid-template-columns:0 minmax(0,1fr) 0; }
+        .map-panel-title { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 10px; font-size:15px; }
+        .map-search { width:100%; margin-bottom:10px; padding:9px 10px; border:1px solid var(--border-color); border-radius:7px; background:#fff; }
+        .map-project-row { margin:6px 0; padding:8px; border:1px solid var(--border-color); border-radius:8px; background:#fff; }
+        .map-project-row.active { border-color:var(--primary-color); box-shadow:0 0 0 2px rgba(30,58,138,.12); }
+        .map-project-actions, .map-inline-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+        .map-mini-btn { min-height:34px; padding:6px 9px; border:1px solid var(--border-color); border-radius:6px; background:#fff; color:var(--text-color); font-size:12px; cursor:pointer; touch-action:manipulation; }
+        .map-mini-btn.primary { border-color:var(--primary-color); background:var(--primary-color); color:#fff; }
+        .map-offline-badge { display:inline-block; margin-left:5px; padding:2px 6px; border-radius:999px; background:#dbeafe; color:#1e40af; font-size:10px; font-weight:700; }
+        .map-project-facilities { max-height:310px; overflow-y:auto; margin-top:9px; padding-top:6px; border-top:1px solid var(--border-color); }
+        .map-project-facilities-empty { padding:7px; color:var(--text-light); font-size:11px; background:#f8faf9; border-radius:5px; }
+        .map-facility-row { display:grid; grid-template-columns:minmax(0,1fr) 28px; align-items:center; gap:5px; padding:3px; border-radius:5px; }
+        .map-facility-row:hover, .map-facility-row.active { background:#edf5ff; }
+        .map-facility-jump { display:flex; align-items:center; min-width:0; padding:6px 3px; border:0; background:transparent; color:var(--text-color); font:inherit; font-size:12px; line-height:1.35; text-align:left; cursor:pointer; touch-action:manipulation; }
+        .map-facility-equipment-marker { width:4px; height:22px; flex:0 0 4px; margin-right:5px; border-radius:3px; }
+        .map-facility-equipment-marker.empty { visibility:hidden; }
+        .map-facility-index { flex:0 0 24px; margin-right:5px; color:var(--text-light); text-align:right; }
+        .map-facility-name-wrap { display:flex; flex-wrap:wrap; align-items:center; min-width:0; gap:4px; }
+        .map-facility-name { min-width:0; overflow-wrap:anywhere; }
+        .map-facility-status { display:inline-block; max-width:100%; padding:1px 4px; border:1px solid #b8c5d8; border-radius:4px; background:#f8fafc; color:#475569; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .map-google-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:#4285f4; color:#fff; font:700 12px/1 Arial,sans-serif; text-decoration:none; }
+        .map-google-btn.disabled { background:#cbd5e1; color:#64748b; }
+        .map-detail-empty { padding:18px 4px; color:var(--text-light); line-height:1.7; }
+        .map-mobile-readonly-note { margin:0 0 12px; padding:9px 10px; border-radius:7px; background:#eff6ff; color:#1e40af; font-size:12px; line-height:1.5; }
+        .map-readonly-summary { display:grid; gap:7px; margin:9px 0 13px; padding:11px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-size:12px; line-height:1.45; }
+        .map-readonly-summary strong { font-size:15px; }
+        .map-mobile-note { margin-top:14px; padding-top:12px; border-top:1px solid var(--border-color); }
+        .map-mobile-note h4 { display:flex; align-items:center; gap:6px; margin:0 0 5px; font-size:14px; }
+        .map-mobile-note h4 span { padding:2px 6px; border-radius:999px; background:#ecfdf5; color:#047857; font-size:10px; font-weight:600; }
+        .map-mobile-note-help { margin:0 0 7px; color:var(--text-light); font-size:11px; line-height:1.5; }
+        .map-mobile-note textarea { display:block; width:100%; min-height:112px; padding:9px; border:1px solid #b8c5d1; border-radius:7px; background:#fff; color:var(--text-color); line-height:1.5; resize:vertical; }
+        .map-mobile-note textarea:focus { outline:2px solid #93c5fd; outline-offset:1px; border-color:#2563eb; }
+        .map-mobile-note-status { min-height:18px; margin:7px 0 0; color:var(--text-light); font-size:11px; line-height:1.5; }
+        .map-mobile-note-status.error { color:#b91c1c; }
+        .xrds-label-icon { background: transparent; border: 0; }
+        .xrds-label-text { width:100%; height:100%; box-sizing:border-box; display:flex; align-items:center; padding:2px 7px; border:1px solid; border-radius:5px; font-size:12px; line-height:1.2; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-shadow:0 1px 4px rgba(15,23,42,.18); cursor:pointer; }
+        .xrds-label-text.has-equipment { border-width:4px; box-shadow:0 1px 5px rgba(15,23,42,.24); }
+        .xrds-schedule-badge { display:inline-block; margin-left:5px; padding:1px 4px; border:1px solid #64748b; border-radius:4px; background:rgba(248,250,252,.9); color:#334155 !important; font-size:10px; line-height:1.2; font-weight:700; white-space:nowrap; }
+        .map-device-btn { border-color:#2563eb; color:#1d4ed8; }        .xrds-original { margin-top:14px; padding-top:12px; border-top:1px solid var(--border-color); }
+        .xrds-original h4 { display:flex; justify-content:space-between; align-items:center; margin:0 0 10px; }
+        .xrds-original h4 span { color:var(--text-light); font-size:11px; font-weight:500; }
+        #xrds-attribute-filter { width:100%; margin-bottom:9px; padding:9px 10px; border:1px solid var(--border-color); border-radius:7px; }
+        .xrds-attr-group { margin-bottom:7px; overflow:hidden; border:1px solid var(--border-color); border-radius:7px; background:#fff; }
+        .xrds-attr-group summary, .xrds-raw-json summary { cursor:pointer; padding:9px 10px; font-size:12px; font-weight:700; }
+        .xrds-attr-group summary span { float:right; color:var(--text-light); font-size:10px; font-weight:500; }
+        .xrds-attr-row { display:grid; grid-template-columns:minmax(94px,.9fr) minmax(0,1.2fr); gap:8px; padding:8px 10px; border-top:1px solid #edf1f4; font-size:11px; }
+        .xrds-attr-row[hidden], .xrds-attr-group[hidden] { display:none; }
+        .xrds-attr-label { font-weight:700; overflow-wrap:anywhere; }
+        .xrds-attr-key { margin-top:2px; color:var(--text-light); font:9px/1.3 Consolas,monospace; overflow-wrap:anywhere; }
+        .xrds-attr-value { text-align:right; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .xrds-attr-value.multiline { text-align:left; font-family:Consolas,monospace; }
+        .xrds-raw-json { margin-top:9px; color:var(--text-light); }
+        .xrds-raw-json pre { max-height:260px; overflow:auto; padding:10px; border-radius:6px; background:#f5f7f8; color:var(--text-color); font:10px/1.45 Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .xrds-schedule-detail { margin:9px 0; padding:8px 10px; border:1px solid #cbd5e1; border-radius:7px; background:#f8fafc; color:#334155; }
+        .xrds-schedule-detail h4 { margin:0 0 5px; font-size:12px; }
+        .xrds-schedule-detail ul { margin:0; padding-left:18px; font-size:11px; line-height:1.55; }
+        .xrds-schedule-detail li span { color:var(--text-light); }
+        .xrds-schedule-equipment { margin:5px 0 0; font-size:10px; color:#475569; }
+        .map-pane-toggle { position:absolute; top:50%; z-index:1100; width:38px; min-height:58px; transform:translateY(-50%); border:1px solid #b8c5d8; background:rgba(255,255,255,.96); color:#334155; font-size:25px; line-height:1; cursor:pointer; box-shadow:0 2px 8px rgba(15,23,42,.18); touch-action:manipulation; }
+        .map-pane-toggle.left { left:0; border-left:0; border-radius:0 9px 9px 0; }
+        .map-pane-toggle.right { right:0; border-right:0; border-radius:9px 0 0 9px; }
+        .map-status { position:absolute; left:12px; bottom:12px; z-index:500; max-width:min(520px,calc(100% - 24px)); padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,253,248,.94); font-size:12px; box-shadow:0 2px 8px rgba(0,0,0,.14); }
+        @media (max-width:720px) {
+            #tab-content-map.map-workspace { grid-template-columns:1fr; grid-template-rows:54px minmax(0,1fr); }
+            .map-workspace-canvas { grid-column:1; grid-row:2; }
+            .map-workspace-pane.left, .map-workspace-pane.right { position:absolute; top:54px; bottom:0; width:min(360px,92vw); z-index:700; }
+            .map-workspace-pane.left { left:0; box-shadow:5px 0 16px rgba(0,0,0,.18); }
+            .map-workspace-pane.right { right:0; box-shadow:-5px 0 16px rgba(0,0,0,.18); }
+            .map-workspace-toolbar { gap:6px; padding:8px; overflow-x:auto; scrollbar-width:thin; }
+            .map-workspace-toolbar h2, #map-offline-status, .mobile-readonly-badge, #mobile-reload-btn { flex:0 0 auto; }
+            .map-workspace-toolbar h2 { font-size:17px; }
+            #map-workspace-status { display:none; }
+            .map-mini-btn { min-height:38px; }
+            .map-status { bottom:8px; left:8px; max-width:calc(100% - 16px); }
+        }
+    </style>
+</head>
+<body class="map-workspace-open xrds-mobile-mode">
+    <div class="map-workspace" id="tab-content-map">
+        <div class="map-workspace-toolbar">
+            <h2>持ち出し地図</h2>
+            <span id="map-workspace-status">保存済み業務を読み込んでいます</span>
+            <span id="map-offline-status">iPhone内保存: 0業務</span>
+            <span class="mobile-readonly-badge">閲覧専用</span>
+            <button type="button" class="map-mini-btn" id="mobile-reload-btn">一覧更新</button>
+        </div>
+        <aside class="map-workspace-pane left">
+            <h3 class="map-panel-title">保存済み業務 <span id="map-project-count" style="font-size:12px;color:var(--text-light);"></span></h3>
+            <input id="map-project-search" class="map-search" type="search" placeholder="業務名・年度を絞り込み" autocomplete="off">
+            <div id="project-tree"></div>
+            <hr style="border:0;border-top:1px solid var(--border-color);margin:16px 0;">
+            <h3 class="map-panel-title">表示フィルタ</h3>
+            <div id="hantei-filter" style="display:grid;gap:7px;font-size:13px;">
+                <label><input type="checkbox" class="hantei-cb" value="1" checked> 区分1</label>
+                <label><input type="checkbox" class="hantei-cb" value="2" checked> 区分2</label>
+                <label><input type="checkbox" class="hantei-cb" value="3" checked> 区分3</label>
+                <label><input type="checkbox" class="hantei-cb" value="4" checked> 区分4</label>
+                <label><input type="checkbox" class="hantei-cb" value="other" checked> その他/未設定</label>
+                <label><input type="checkbox" id="map-label-color-toggle" checked> 判定区分の色分け</label>
+                <label><input type="checkbox" id="map-equipment-border-toggle" checked> 使用機材の枠色</label>
+            </div>
+            <datalist id="nendo-datalist"></datalist>
+            <datalist id="gyomu-datalist"></datalist>
+        </aside>
+        <main class="map-workspace-canvas">
+            <div id="leaflet-map"></div>
+            <button type="button" class="map-pane-toggle left" id="map-toggle-left-btn" aria-label="左パネルを隠す" title="左パネルを隠す" aria-pressed="false">‹</button>
+            <button type="button" class="map-pane-toggle right" id="map-toggle-right-btn" aria-label="右パネルを開く" title="右パネルを開く" aria-pressed="true">›</button>
+            <div id="map-canvas-status" class="map-status">左の保存済み業務から表示してください。</div>
+        </main>
+        <aside class="map-workspace-pane right"><div id="map-detail-panel"></div></aside>
+    </div>
+    <script>
+        window.XRDS_MOBILE_MODE = true;
+    </script>
+    <script src="/static/leaflet/leaflet.js"></script>
+    <script src="/static/offline.js?v=2"></script>
+    <script src="/static/map.js?v=31"></script>
+    <script>
+        window.xrdsOffline?.registerServiceWorker?.();
+        window.onMapTabActivated?.();
+        document.getElementById('mobile-reload-btn')?.addEventListener('click', () => window.onMapTabActivated?.());
+    </script>
+</body>
+</html>
