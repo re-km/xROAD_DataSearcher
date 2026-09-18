@@ -87,7 +87,7 @@
       <tr><th>GenPDF</th><td><code>https://maejima.tail9ede56.ts.net:8444/</code> が従来どおり開くか</td></tr>
       <tr><th>xROADローカル</th><td>会社用PCで <code>http://127.0.0.1:8080/</code> が開くか</td></tr>
       <tr><th>ポート確認</th><td><code>Get-NetTCPConnection -LocalPort 8080,4180 -State Listen</code></td></tr>
-      <tr><th>停止</th><td>xROADのPowerShell画面でCtrl+C。Serve経路だけ解除する場合は <code>Stop-xROAD-Tailnet.ps1</code> を使用</td></tr>
+      <tr><th>停止</th><td><code>stop-xROAD-Tailnet.cmd</code> でxROADのローカルサーバーとServe経路を停止します。GenPDFは停止しません</td></tr>
     </table>
     <p class="warning">現在の作業PCからは <code>maejima.tail9ede56.ts.net</code> の名前解決ができないため、会社用PC上での実起動・URL応答はまだ未確認です。この手順は会社用PCで実行して確認してください。</p>
   </section>

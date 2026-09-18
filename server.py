@@ -135,6 +135,10 @@ class RequestHandler(SimpleHTTPRequestHandler):
     def _check_auth(self):
         """appsettings.jsonのauthが設定されている場合のみBasic認証を要求する（共有ユーザー名+共有パスワード方式）"""
         settings = load_settings()
+        trusted_tailnet = str(os.environ.get("XRDS_TAILNET_NO_BASIC_AUTH", "")).strip().lower() in ("1", "true", "yes")
+        trusted_local_upstream = str(os.environ.get("XRDS_BIND_HOST", "")).strip().lower() in ("localhost", "127.0.0.1")
+        if trusted_tailnet and trusted_local_upstream:
+            return True
         auth_secret = str(settings.get("auth", "")).strip()
         if not auth_secret:
             return True

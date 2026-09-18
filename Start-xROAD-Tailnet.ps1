@@ -101,11 +101,13 @@ if (-not $NoTailscaleServe) {
 $previousHost = $env:XRDS_BIND_HOST
 $previousPort = $env:XRDS_PORT
 $previousNoBrowser = $env:XRDS_NO_BROWSER
+$previousTailnetNoBasicAuth = $env:XRDS_TAILNET_NO_BASIC_AUTH
 try {
     # Keep the local xROAD upstream on localhost regardless of appsettings.json.
     $env:XRDS_BIND_HOST = '127.0.0.1'
     $env:XRDS_PORT = [string]$Port
     $env:XRDS_NO_BROWSER = '1'
+    $env:XRDS_TAILNET_NO_BASIC_AUTH = '1'
     $browserUrl = "http://127.0.0.1:$Port/"
     $browserCommand = "Start-Sleep -Seconds 2; Start-Process '$browserUrl'"
     $launcherPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -142,6 +144,11 @@ try {
         Remove-Item Env:XRDS_NO_BROWSER -ErrorAction SilentlyContinue
     } else {
         $env:XRDS_NO_BROWSER = $previousNoBrowser
+    }
+    if ($null -eq $previousTailnetNoBasicAuth) {
+        Remove-Item Env:XRDS_TAILNET_NO_BASIC_AUTH -ErrorAction SilentlyContinue
+    } else {
+        $env:XRDS_TAILNET_NO_BASIC_AUTH = $previousTailnetNoBasicAuth
     }
     if ($null -eq $previousPort) {
         Remove-Item Env:XRDS_PORT -ErrorAction SilentlyContinue

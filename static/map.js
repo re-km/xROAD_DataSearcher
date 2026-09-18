@@ -29,6 +29,10 @@
     let printPaper = loadPrintPaper();
     let printDisplayOptions = loadPrintDisplayOptions();
     const printDirtyProjects = new Set();
+    let locationLayer = null;
+    let locationAccuracyCircle = null;
+    let locationMarker = null;
+    let locationRequestInFlight = false;
 
 
     const MAX_INDIVIDUAL_MARKERS = 1200;
@@ -352,11 +356,115 @@
         panel?.querySelectorAll('.xrds-attr-group').forEach(group => {
             group.hidden = !group.querySelector('.xrds-attr-row:not([hidden])');
         });
-    }    function status(message) {
+    }
+    function status(message) {
         const el = document.getElementById('map-canvas-status');
         if (el) el.textContent = message;
         const toolbar = document.getElementById('map-workspace-status');
         if (toolbar) { toolbar.textContent = message; toolbar.title = message; }
+    }
+    function setLocationStatus(message, isError = false) {
+        const element = document.getElementById('map-location-status');
+        if (!element) return;
+        element.textContent = message;
+        element.title = message;
+        element.classList.toggle('error', Boolean(isError));
+    }
+    function setLocationButtonBusy(busy) {
+        const button = document.getElementById('map-current-location-btn');
+        if (!button) return;
+        button.disabled = Boolean(busy);
+        button.textContent = busy ? '取得中...' : '現在地';
+    }
+    function getLocationErrorMessage(error) {
+        if (Number(error?.code) === 1) return '位置情報が許可されていません。ブラウザの設定で許可してから再試行してください。';
+        if (Number(error?.code) === 2) return '現在地を取得できませんでした。屋外など電波の届く場所で再試行してください。';
+        if (Number(error?.code) === 3) return '現在地の取得がタイムアウトしました。もう一度お試しください。';
+        return '現在地を取得できませんでした。もう一度お試しください。';
+    }
+    function ensureLocationLayer() {
+        if (locationLayer) return locationLayer;
+        if (!leafletMap) throw new Error('地図が初期化されていません。');
+        const pane = leafletMap.createPane('xrds-location-pane');
+        if (pane) {
+            pane.dataset.xrdsLocationPane = 'true';
+            pane.style.zIndex = '460';
+            pane.style.pointerEvents = 'none';
+        }
+        locationLayer = L.layerGroup().addTo(leafletMap);
+        return locationLayer;
+    }
+    function showCurrentLocation(position) {
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        const rawAccuracy = Number(position?.coords?.accuracy);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+            || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            throw new Error('端末から有効な位置情報を取得できませんでした。');
+        }
+        const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 ? rawAccuracy : null;
+        const layer = ensureLocationLayer();
+        layer.clearLayers();
+        locationAccuracyCircle = accuracy === null ? null : L.circle([latitude, longitude], {
+            radius: Math.max(accuracy, 5),
+            pane: 'xrds-location-pane',
+            color: '#2563eb',
+            weight: 2,
+            opacity: .85,
+            fillColor: '#60a5fa',
+            fillOpacity: .16,
+            interactive: false,
+        }).addTo(layer);
+        locationMarker = L.marker([latitude, longitude], {
+            pane: 'xrds-location-pane',
+            icon: L.divIcon({
+                className: 'xrds-current-location-icon',
+                html: '<span aria-hidden="true"></span>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+            }),
+            interactive: false,
+            keyboard: false,
+        }).addTo(layer);
+        const zoom = Math.min(Math.max(Number(leafletMap.getZoom?.() || 0), 15), 18);
+        leafletMap.setView([latitude, longitude], zoom);
+        const accuracyLabel = accuracy === null ? '' : `（精度 約${Math.round(accuracy)}m）`;
+        setLocationStatus(`現在地を表示中${accuracyLabel}`);
+    }
+    function requestCurrentLocation() {
+        if (locationRequestInFlight) return;
+        if (!leafletMap) {
+            setLocationStatus('地図を読み込んでから現在地を取得してください。', true);
+            return;
+        }
+        const hostname = window.location?.hostname || '';
+        const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+        if (window.isSecureContext === false && !localHost) {
+            setLocationStatus('現在地はHTTPS接続で利用できます。', true);
+            return;
+        }
+        const geolocation = window.navigator?.geolocation;
+        if (!geolocation) {
+            setLocationStatus('このブラウザは位置情報に対応していません。', true);
+            return;
+        }
+        locationRequestInFlight = true;
+        setLocationButtonBusy(true);
+        setLocationStatus('現在地を取得しています...');
+        geolocation.getCurrentPosition(position => {
+            try {
+                showCurrentLocation(position);
+            } catch (error) {
+                setLocationStatus(error.message, true);
+            } finally {
+                locationRequestInFlight = false;
+                setLocationButtonBusy(false);
+            }
+        }, error => {
+            setLocationStatus(getLocationErrorMessage(error), true);
+            locationRequestInFlight = false;
+            setLocationButtonBusy(false);
+        }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
     }
     function renderOfflineStatus() {
         const element = document.getElementById('map-offline-status');
@@ -490,6 +598,7 @@
         document.getElementById('map-project-search')?.addEventListener('input', renderProjectTree);
         document.getElementById('map-create-project-btn')?.addEventListener('click', createProject);
         document.getElementById('map-back-btn')?.addEventListener('click', () => switchTab('file'));
+        document.getElementById('map-current-location-btn')?.addEventListener('click', requestCurrentLocation);
         bindPaneToggleEvents();
         renderOfflineStatus();
         window.addEventListener('online', renderOfflineStatus);
@@ -608,7 +717,8 @@
                 rect: canvas.getBoundingClientRect(),
                 zIndex: cssNumber(window.getComputedStyle?.(canvas.parentElement)?.zIndex, 0),
             }))
-            .filter(item => item.rect.width > 0 && item.rect.height > 0)
+            .filter(item => item.rect.width > 0 && item.rect.height > 0
+                && !item.canvas.closest?.('[data-xrds-location-pane="true"]'))
             .sort((a, b) => a.zIndex - b.zIndex);
         canvases.forEach(({ canvas, rect }) => {
             const style = window.getComputedStyle?.(canvas);
@@ -625,6 +735,7 @@
         });
         if (typeof Path2D !== 'function') return;
         mapContainer.querySelectorAll('.leaflet-pane svg').forEach(svg => {
+            if (svg.closest?.('[data-xrds-location-pane="true"]')) return;
             const svgRect = svg.getBoundingClientRect();
             svg.querySelectorAll('path').forEach(path => {
                 const definition = path.getAttribute('d');

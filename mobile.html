@@ -70,7 +70,7 @@
         .xrds-label-text { width:100%; height:100%; box-sizing:border-box; display:flex; align-items:center; padding:2px 7px; border:1px solid; border-radius:5px; font-size:12px; line-height:1.2; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-shadow:0 1px 4px rgba(15,23,42,.18); cursor:pointer; }
         .xrds-label-text.has-equipment { border-width:4px; box-shadow:0 1px 5px rgba(15,23,42,.24); }
         .xrds-schedule-badge { display:inline-block; margin-left:5px; padding:1px 4px; border:1px solid #64748b; border-radius:4px; background:rgba(248,250,252,.9); color:#334155 !important; font-size:10px; line-height:1.2; font-weight:700; white-space:nowrap; }
-        .map-device-btn { border-color:#2563eb; color:#1d4ed8; }        .xrds-original { margin-top:14px; padding-top:12px; border-top:1px solid var(--border-color); }
+.map-device-btn { border-color:#2563eb; color:#1d4ed8; } .map-location-btn { border-color:#2563eb; color:#1d4ed8; } .map-location-status { flex:0 0 auto; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-light); } .map-location-status.error { color:#b91c1c; } .xrds-current-location-icon { display:grid; place-items:center; width:24px !important; height:24px !important; border:3px solid #fff; border-radius:50%; background:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.35), 0 2px 6px rgba(15,23,42,.35); } .xrds-current-location-icon span { width:8px; height:8px; border-radius:50%; background:#fff; } #xrds-location-pane { pointer-events:none; } body.xrds-print-mode #xrds-location-pane { display:none !important; }        .xrds-original { margin-top:14px; padding-top:12px; border-top:1px solid var(--border-color); }
         .xrds-original h4 { display:flex; justify-content:space-between; align-items:center; margin:0 0 10px; }
         .xrds-original h4 span { color:var(--text-light); font-size:11px; font-weight:500; }
         #xrds-attribute-filter { width:100%; margin-bottom:9px; padding:9px 10px; border:1px solid var(--border-color); border-radius:7px; }
@@ -115,6 +115,8 @@
             <h2>持ち出し地図</h2>
             <span id="map-workspace-status">保存済み業務を読み込んでいます</span>
             <span id="map-offline-status">iPhone内保存: 0業務</span>
+            <button type="button" class="map-mini-btn map-location-btn" id="map-current-location-btn">現在地</button>
+            <span id="map-location-status" class="map-location-status" role="status" aria-live="polite">未取得</span>
             <span class="mobile-readonly-badge">閲覧専用</span>
             <button type="button" class="map-mini-btn" id="mobile-reload-btn">一覧更新</button>
         </div>
@@ -149,7 +151,7 @@
     </script>
     <script src="/static/leaflet/leaflet.js"></script>
     <script src="/static/offline.js?v=2"></script>
-    <script src="/static/map.js?v=33"></script>
+    <script src="/static/map.js?v=34"></script>
     <script>
         window.xrdsOffline?.registerServiceWorker?.();
         window.onMapTabActivated?.();

@@ -27,6 +27,7 @@ const instrumented = source.replace(
         getPrintPaperSpec,
         drawPrintVectorLayers,
         waitForLeafletPaint,
+        getLocationErrorMessage,
         onDetailClick,
         onDetailChange,
         onMapClick,
@@ -41,6 +42,9 @@ const instrumented = source.replace(
 );
 assert.notEqual(instrumented, source, 'map.js のテストフックを挿入できません');
 assert.match(source, /SCHEDULE_LABEL_ZOOM_THRESHOLD = 14/);
+assert.match(source, /window\.navigator\?\.geolocation/);
+assert.match(source, /xrds-location-pane/);
+assert.match(source, /data-xrds-location-pane/);
 assert.match(source, /leafletMap\.on\('zoomend'/);
 assert.match(source, /PIN_COLOR = '#000000'/);
 assert.ok(source.includes('const PIN_SIZE_SCALE = .5;'));
@@ -56,6 +60,8 @@ assert.ok(source.includes('const color = getColorFor(getHanteiKey(entry.feature.
 assert.match(source, /await waitForPrintTiles\(mapContainer\);\s*if \(renderTimer\) \{\s*clearTimeout\(renderTimer\);\s*renderTimer = null;\s*\}\s*renderVisibleMarkers\(\);\s*await waitForLeafletPaint\(\);/);
 const elements = {
     'map-detail-panel': { innerHTML: '' },
+    'map-location-status': { textContent: '', title: '', classList: { toggle() {} } },
+    'map-current-location-btn': { disabled: false, textContent: '現在地' },
 };
 let savedPayload = null;
 const context = {
@@ -132,6 +138,9 @@ test.drawPrintVectorLayers(
     { left: 10, top: 20, width: 800, height: 400 },
 );
 assert.equal(vectorDraws.length, 2);
+assert.match(test.getLocationErrorMessage({ code: 1 }), /許可されていません/);
+assert.match(test.getLocationErrorMessage({ code: 2 }), /取得できませんでした/);
+assert.match(test.getLocationErrorMessage({ code: 3 }), /タイムアウト/);
 assert.equal(vectorDraws[0][0], canvasA);
 assert.deepEqual(vectorDraws[0].slice(1), [10, 20, 800, 400]);
 assert.equal(vectorDraws[1][0], canvasB);
@@ -350,7 +359,9 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=33/);
+    assert.match(indexHtml, /static\/map\.js\?v=34/);
+    assert.match(indexHtml, /id="map-current-location-btn"/);
+    assert.match(indexHtml, /id="map-location-status"/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);
     assert.match(indexHtml, /id="map-equipment-border-toggle"/);
     assert.match(indexHtml, /id="map-print-header-toggle"/);

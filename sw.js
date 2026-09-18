@@ -1,4 +1,4 @@
-const XRDS_SHELL_CACHE = 'xrds-shell-v33';
+const XRDS_SHELL_CACHE = 'xrds-shell-v34';
 const XRDS_TILE_CACHE = 'xrds-gsi-tiles-v1';
 const XRDS_SHELL_FILES = [
     '/',
@@ -8,7 +8,7 @@ const XRDS_SHELL_FILES = [
     '/static/leaflet/leaflet.js',
     '/static/leaflet/images/marker-icon.png',
     '/static/leaflet/images/marker-shadow.png',
-    '/static/map.js?v=33',
+    '/static/map.js?v=34',
     '/static/offline.js?v=2',
     '/static/manifest.webmanifest',
     '/static/manifest-mobile.webmanifest',
@@ -51,7 +51,7 @@ self.addEventListener('fetch', event => {
     if (url.origin !== self.location.origin) return;
     if (request.mode === 'navigate') {
         const fallback = url.pathname === '/mobile.html' ? '/mobile.html' : '/index.html';
-        event.respondWith(fetch(request).catch(() => caches.match(fallback)));
+        event.respondWith(fetch(request).then(response => (response.status === 401 || response.status === 403) ? caches.match(fallback).then(cached => cached || response) : response).catch(() => caches.match(fallback)));
         return;
     }
     if (url.pathname.startsWith('/static/')) {
