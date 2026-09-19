@@ -61,7 +61,7 @@ assert.match(source, /await waitForPrintTiles\(mapContainer\);\s*if \(renderTime
 const elements = {
     'map-detail-panel': { innerHTML: '' },
     'map-location-status': { textContent: '', title: '', classList: { toggle() {} } },
-    'map-current-location-btn': { disabled: false, textContent: '現在地' },
+    'map-current-location-btn': { disabled: false, title: '現在地を表示', setAttribute() {}, classList: { toggle() {} } },
 };
 let savedPayload = null;
 const context = {
@@ -359,7 +359,7 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=34/);
+    assert.match(indexHtml, /static\/map\.js\?v=35/);
     assert.match(indexHtml, /id="map-current-location-btn"/);
     assert.match(indexHtml, /id="map-location-status"/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);

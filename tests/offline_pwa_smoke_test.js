@@ -11,10 +11,10 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static', 'manifest.
 
 assert.match(index, /manifest\.webmanifest/);
 assert.match(index, /static\/offline\.js\?v=2/);
-assert.match(index, /static\/map\.js\?v=34/);
+assert.match(index, /static\/map\.js\?v=35/);
 assert.match(serviceWorker, /xrds-gsi-tiles-v1/);
-assert.match(serviceWorker, /xrds-shell-v34/);
-assert.match(serviceWorker, /static\/map\.js\?v=34/);
+assert.match(serviceWorker, /xrds-shell-v35/);
+assert.match(serviceWorker, /static\/map\.js\?v=35/);
 assert.match(serviceWorker, /request\.mode === 'navigate'/);
 assert.match(offlineSource, /const DB_VERSION = 2/);
 assert.match(offlineSource, /iphone_notes/);

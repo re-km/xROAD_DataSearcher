@@ -107,7 +107,19 @@
             .map-mini-btn { min-height:38px; }
             .map-status { bottom:8px; left:8px; max-width:calc(100% - 16px); }
         }
-    </style>
+            .map-current-location-control { position:absolute; right:16px; bottom:54px; z-index:1100; display:grid; justify-items:end; gap:6px; pointer-events:none; }
+        .map-current-location-btn { display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:#fff; color:#2563eb; cursor:pointer; box-shadow:0 2px 8px rgba(15,23,42,.26); pointer-events:auto; touch-action:manipulation; }
+        .map-current-location-btn:hover, .map-current-location-btn:focus-visible { background:#eff6ff; outline:2px solid #93c5fd; outline-offset:2px; }
+        .map-current-location-btn:disabled { cursor:wait; opacity:.78; }
+        .map-current-location-glyph { display:block; width:20px; height:20px; background:currentColor; clip-path:polygon(50% 0,100% 100%,50% 78%,0 100%); transform:rotate(45deg); filter:drop-shadow(0 1px 1px rgba(15,23,42,.25)); }
+        .map-current-location-btn.is-busy .map-current-location-glyph { animation:xrds-location-pulse 1s ease-in-out infinite; }
+        .map-location-status { display:none; max-width:min(260px,calc(100vw - 42px)); padding:5px 8px; border:1px solid #bfdbfe; border-radius:999px; background:rgba(255,255,255,.96); color:#1e40af; font-size:11px; line-height:1.3; box-shadow:0 1px 5px rgba(15,23,42,.18); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+        .map-location-status.is-visible { display:block; }
+        .map-location-status.error { border-color:#fecaca; color:#b91c1c; }
+        @keyframes xrds-location-pulse { 50% { transform:rotate(45deg) scale(.82); opacity:.6; } }
+        body.xrds-print-mode .map-current-location-control { display:none !important; }
+        @media (max-width:720px) { .map-current-location-control { right:10px; bottom:56px; } .map-current-location-btn { width:42px; height:42px; } .map-current-location-glyph { width:18px; height:18px; } }
+</style>
 </head>
 <body class="map-workspace-open xrds-mobile-mode">
     <div class="map-workspace" id="tab-content-map">
@@ -115,8 +127,8 @@
             <h2>持ち出し地図</h2>
             <span id="map-workspace-status">保存済み業務を読み込んでいます</span>
             <span id="map-offline-status">iPhone内保存: 0業務</span>
-            <button type="button" class="map-mini-btn map-location-btn" id="map-current-location-btn">現在地</button>
-            <span id="map-location-status" class="map-location-status" role="status" aria-live="polite">未取得</span>
+
+
             <span class="mobile-readonly-badge">閲覧専用</span>
             <button type="button" class="map-mini-btn" id="mobile-reload-btn">一覧更新</button>
         </div>
@@ -139,7 +151,12 @@
             <datalist id="gyomu-datalist"></datalist>
         </aside>
         <main class="map-workspace-canvas">
-            <div id="leaflet-map"></div>
+            <div id="leaflet-map"></div><div class="map-current-location-control">
+    <button type="button" class="map-current-location-btn" id="map-current-location-btn" aria-label="現在地を表示" title="現在地を表示">
+        <span class="map-current-location-glyph" aria-hidden="true"></span>
+    </button>
+    <span id="map-location-status" class="map-location-status" role="status" aria-live="polite">未取得</span>
+</div>
             <button type="button" class="map-pane-toggle left" id="map-toggle-left-btn" aria-label="左パネルを隠す" title="左パネルを隠す" aria-pressed="false">‹</button>
             <button type="button" class="map-pane-toggle right" id="map-toggle-right-btn" aria-label="右パネルを開く" title="右パネルを開く" aria-pressed="true">›</button>
             <div id="map-canvas-status" class="map-status">左の保存済み業務から表示してください。</div>
@@ -151,7 +168,7 @@
     </script>
     <script src="/static/leaflet/leaflet.js"></script>
     <script src="/static/offline.js?v=2"></script>
-    <script src="/static/map.js?v=34"></script>
+    <script src="/static/map.js?v=35"></script>
     <script>
         window.xrdsOffline?.registerServiceWorker?.();
         window.onMapTabActivated?.();

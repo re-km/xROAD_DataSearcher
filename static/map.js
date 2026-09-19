@@ -369,12 +369,15 @@
         element.textContent = message;
         element.title = message;
         element.classList.toggle('error', Boolean(isError));
+        element.classList.toggle('is-visible', Boolean(message) && message !== '未取得');
     }
     function setLocationButtonBusy(busy) {
         const button = document.getElementById('map-current-location-btn');
         if (!button) return;
         button.disabled = Boolean(busy);
-        button.textContent = busy ? '取得中...' : '現在地';
+        button.setAttribute?.('aria-busy', busy ? 'true' : 'false');
+        button.classList.toggle('is-busy', Boolean(busy));
+        button.title = busy ? '現在地を取得しています' : '現在地を表示';
     }
     function getLocationErrorMessage(error) {
         if (Number(error?.code) === 1) return '位置情報が許可されていません。ブラウザの設定で許可してから再試行してください。';
