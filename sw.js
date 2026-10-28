@@ -13,6 +13,9 @@ const XRDS_SHELL_FILES = [
     '/static/manifest.webmanifest',
     '/static/manifest-mobile.webmanifest',
     '/static/icon.svg',
+    '/static/icon-180.png',
+    '/static/icon-192.png',
+    '/static/icon-512.png',
 ];
 
 self.addEventListener('install', event => {
