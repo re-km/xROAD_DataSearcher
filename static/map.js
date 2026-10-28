@@ -1013,7 +1013,41 @@
             alert('印刷位置を保存できません: ' + error.message);
         }
     }
+    // XRScaleの現場一括作成用CSV（施設名,年度,業務名,種別,径間数）を書き出す。橋梁・シェッド以外は対象外。
+    async function exportXRScaleCsv(targets, fileLabel) {
+        const csvTools = window.xrdsCsv;
+        if (!csvTools) { alert('CSV書き出しの部品を読み込めていません。ページを再読み込みしてください。'); return; }
+        try {
+            const projects = [];
+            for (const target of targets) projects.push(await ensureProjectLoaded(target.nendo, target.gyomu));
+            const result = csvTools.buildXRScaleCsv(projects);
+            const excluded = result.excluded;
+            const unknownNote = excluded.unknown ? `（うち種別不明 ${excluded.unknown}件）` : '';
+            const excludedNote = excluded.total ? `橋梁・シェッド以外の${excluded.total}件は対象外にしました${unknownNote}。` : '';
+            if (!result.included) { alert('書き出せる施設（橋梁・シェッド）がありません。' + excludedNote); return; }
+            const blob = new Blob(['\uFEFF', result.csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = csvTools.xrscaleFileName(targets[0].nendo, fileLabel);
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            const message = `XRScale用CSVを書き出しました（${result.included}件）。${excludedNote}`;
+            status(message);
+            if (excluded.total) alert(message);
+        } catch (error) { alert('XRScale用CSVを書き出せません: ' + error.message); }
+    }
+    async function onProjectYearClick(event) {
+        const button = event.target.closest('button[data-year-action]');
+        if (!button) return false;
+        const year = projectTreeData.find(item => item.nendo === button.dataset.nendo);
+        if (year) await exportXRScaleCsv(year.projects.map(project => ({ nendo: year.nendo, gyomu: project.gyomu })), '全業務');
+        return true;
+    }
     async function onProjectTreeClick(event) {
+        if (await onProjectYearClick(event)) return;
         const button = event.target.closest('button[data-action]');
         if (!button) return;
         const row = button.closest('[data-project-key]');
@@ -1089,6 +1123,8 @@
         } else if (button.dataset.action === 'zip') {
             const project = await ensureProjectLoaded(nendo, gyomu);
             exportProjectZip(project);
+        } else if (button.dataset.action === 'xrscale-csv') {
+            await exportXRScaleCsv([{ nendo, gyomu }], gyomu);
         } else if (button.dataset.action === 'delete-project') {
             await deleteProject(nendo, gyomu, row.dataset.revision);
         }
@@ -1368,7 +1404,8 @@
         projectTreeData.forEach(year => {
             const projects = year.projects.filter(project => `${year.nendo} ${project.gyomu}`.toLowerCase().includes(query));
             if (!projects.length) return;
-            html += `<section><strong style="font-size:13px;">${escapeHtml(year.nendo)}</strong>`;
+            const yearExportButton = mobileMode ? '' : ` <button type="button" class="map-mini-btn" data-year-action="xrscale-csv-year" data-nendo="${escapeHtml(year.nendo)}" title="この年度の全業務をXRScale用CSVで書き出します">XRScale CSV（年度）</button>`;
+            html += `<section><strong style="font-size:13px;">${escapeHtml(year.nendo)}</strong>${yearExportButton}`;
             projects.forEach(project => {
                 total++;
                 const key = projectKey(year.nendo, project.gyomu);
@@ -1387,6 +1424,7 @@
                       <button class="map-mini-btn" data-action="edit">編集</button>
                       <button class="map-mini-btn" data-action="toggle-facilities" aria-expanded="${facilitiesExpanded}">${facilitiesExpanded ? '▼ 施設一覧を隠す' : '▶ 施設一覧を表示'}</button>
                       <button class="map-mini-btn" data-action="zip">QGIS Zip</button>
+                      <button class="map-mini-btn" data-action="xrscale-csv" title="この業務の橋梁・シェッドをXRScale用CSVで書き出します">XRScale CSV</button>
                       <button class="map-mini-btn map-device-btn" data-action="offline-save">📱持ち出し保存／更新</button>
                       <button class="map-mini-btn danger" data-action="delete-project">削除</button>`;                html += `<div class="map-project-row${active}" data-project-key="${escapeHtml(key)}" data-revision="${escapeHtml(project.revision)}">
                     <div style="font-weight:700; font-size:13px;">${escapeHtml(project.gyomu)}</div>

@@ -498,8 +498,10 @@
                     style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
                     <p style="margin-top:0;"><strong>【準備】</strong>
                         以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。
-                        <strong>B列（年度）・C列（業務名）</strong>も入力すると、地図管理の年度・業務名へ自動で反映されます（任意）。</p>
+                        <strong>B列（年度）・C列（業務名）</strong>も入力すると、地図管理の年度・業務名へ自動で反映されます（任意）。
+                        D列（種別）・E列（径間数）はiPhoneアプリ XRScale 用の任意列で、ここでは読み込みません。</p>
                     <button class="btn btn-outline" onclick="downloadTemplate()">📥 施設検索テンプレート.xlsx をダウンロード</button>
+                    <button class="btn btn-outline" onclick="downloadTemplateCsv()">📥 施設検索テンプレート.csv をダウンロード</button>
                 </div>
 
                 <h2 style="margin-top:20px; font-size:22px; text-align:left;">2. ファイルの読み込み</h2>
@@ -911,18 +913,47 @@
         }
 
         // Template Download
+        // A-C列は従来の施設検索テンプレート、D-E列はXRScale取込用の任意列（xROADはA-C列のみ読む）
         function downloadTemplate() {
             const ws = XLSX.utils.aoa_to_sheet([
-                ["施設名", "年度", "業務名", "※A列の2行目以降に施設名を貼り付けてください。B列（年度・例: 2025年度）とC列（業務名）は任意で、入力すると地図管理へ自動で反映されます。"],
-                ["サンプル橋", "2025年度", "サンプル橋梁点検業務", ""],
-                ["", "", "", ""]
+                window.xrdsCsv.XRSCALE_HEADER,
+                ["サンプル橋", "2026年度", "サンプル橋梁点検業務", "橋梁", ""]
             ]);
             // Adjust column width
-            ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 36 }, { wch: 60 }];
+            ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 36 }, { wch: 10 }, { wch: 10 }];
+
+            // 説明文は読み込み対象の外（2枚目のシート）に置く。xROADは1枚目のシートだけを読む。
+            const guide = XLSX.utils.aoa_to_sheet([
+                ["【使い方】"],
+                ["A列（施設名）: 2行目以降に施設名を1行ずつ入力してください。サンプルの行は上書きまたは削除してください。"],
+                ["B列（年度）: 例 2026年度。任意。入力すると地図管理の年度へ自動で反映されます。"],
+                ["C列（業務名）: 任意。入力すると地図管理の業務名へ自動で反映されます。"],
+                ["D列（種別）: 橋梁 または シェッド。iPhoneアプリ XRScale 用の任意列で、xROADでは読み込みません。"],
+                ["E列（径間数）: XRScale 用の任意列。空欄は1径間として扱われます。xROADでは読み込みません。"]
+            ]);
+            guide['!cols'] = [{ wch: 100 }];
 
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Template");
+            XLSX.utils.book_append_sheet(wb, guide, "使い方");
             XLSX.writeFile(wb, "施設検索テンプレート.xlsx");
+        }
+
+        // UTF-8(BOM付き)・CRLF のCSVとして保存する（Excelで文字化けしない）
+        function downloadCsvText(csvText, fileName) {
+            const blob = new Blob(["\uFEFF", csvText], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadTemplateCsv() {
+            downloadCsvText(window.xrdsCsv.buildTemplateCsv(), "施設検索テンプレート.csv");
         }
 
         // Elements
@@ -957,12 +988,15 @@
             const loadingBtnText = document.querySelector('#loading-btn span');
 
             try {
-                if (file.name.toLowerCase().endsWith('.pdf') || (file.name.toLowerCase().endsWith('.csv') && file.size > 0 && !file.name.includes("テンプレート"))) {
+                const lowerName = file.name.toLowerCase();
+                // CSVは内容で判定する: 先頭行の先頭セルが「施設名」ならファイル名に関わらずテンプレートとして読み、それ以外はAI抽出へ回す
+                const csvRows = lowerName.endsWith('.csv') && file.size > 0 ? await readCSVRows(file) : null;
+                if (lowerName.endsWith('.pdf') || (csvRows && !window.xrdsCsv.isTemplateRows(csvRows))) {
                     // Send to Gemini AI for extraction
                     loadingBtnText.textContent = 'AIでファイルから施設名を自動抽出中...';
                     bridgeNames = await extractWithAI(file);
-                } else if (file.name.toLowerCase().endsWith('.csv')) {
-                    bridgeNames = await parseCSVFile(file);
+                } else if (lowerName.endsWith('.csv')) {
+                    bridgeNames = csvRows ? extractColumnA(csvRows) : [];
                 } else if (file.name.match(/\.xlsx?$/i)) {
                     bridgeNames = await parseExcelFile(file);
                 } else {
@@ -1312,23 +1346,17 @@
             return names;
         }
 
-        function parseCSVFile(file) {
+        // CSVをバイト列で読み、UTF-8（文字化けならShift_JIS）で復号してRFC 4180の行配列にする（1行目はヘッダー）
+        function readCSVRows(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     try {
-                        const lines = e.target.result.split(/\r\n|\n/);
-                        const rows = [];
-                        // Skip header (i=1)
-                        for (let i = 1; i < lines.length; i++) {
-                            if (!lines[i].trim()) continue;
-                            rows.push(lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-                        }
-                        resolve(extractColumnA([[], ...rows]));
+                        resolve(window.xrdsCsv.parseCSV(window.xrdsCsv.decodeCSVBytes(new Uint8Array(e.target.result))));
                     } catch (err) { reject(err); }
                 };
                 reader.onerror = () => reject(new Error('CSV read error'));
-                reader.readAsText(file, 'UTF-8');
+                reader.readAsArrayBuffer(file);
             });
         }
 
@@ -1358,7 +1386,7 @@
         }
     </script>
     <script src="static/leaflet/leaflet.js"></script>
-    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/map.js?v=36"></script>
+    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/csv_tools.js?v=1"></script><script src="static/map.js?v=37"></script>
     <script>
         if (window.xrdsOffline) window.xrdsOffline.registerServiceWorker();
         if (new URLSearchParams(location.search).get("tab") === "map") setTimeout(() => switchTab("map"), 0);
