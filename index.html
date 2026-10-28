@@ -497,7 +497,8 @@
                 <div
                     style="text-align: left; margin-bottom: 30px; background: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary-color);">
                     <p style="margin-top:0;"><strong>【準備】</strong>
-                        以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。</p>
+                        以下の「テンプレート」をダウンロードし、<strong>A列の2行目以降</strong>に施設名を箇条書きで入力して保存してください。
+                        <strong>B列（年度）・C列（業務名）</strong>も入力すると、地図管理の年度・業務名へ自動で反映されます（任意）。</p>
                     <button class="btn btn-outline" onclick="downloadTemplate()">📥 施設検索テンプレート.xlsx をダウンロード</button>
                 </div>
 
@@ -646,6 +647,7 @@
                     <button type="button" class="btn" id="add-existing-project-btn" onclick="openMapForExistingProject()"
                         style="flex-shrink: 0; padding: 12px 20px; font-size: 14px;">既存業務に追加</button>
                 </div>
+                <p id="save-meta-hint" style="display:none; margin:10px 0 0; color:#166534; font-size:13px; font-weight:600;"></p>
                 <p style="margin:10px 0 0; color:var(--text-light); font-size:12px;">既存業務へ追加する場合は、候補を選んで上のボタンを押し、地図管理で追加先業務の「編集」を押します。</p>
             </div>
 
@@ -758,6 +760,7 @@
         }
 
         async function executeConditionSearch() {
+            window.__rowMeta = null;
             const prefCode = document.getElementById('pref-select').value;
             const facilityType = document.getElementById('facility-type-select').value;
 
@@ -910,12 +913,12 @@
         // Template Download
         function downloadTemplate() {
             const ws = XLSX.utils.aoa_to_sheet([
-                ["施設名", "※この列の2行目以降に名前を貼り付けてください（B列以降は不要）"],
-                ["サンプル橋", ""],
-                ["", ""]
+                ["施設名", "年度", "業務名", "※A列の2行目以降に施設名を貼り付けてください。B列（年度・例: 2025年度）とC列（業務名）は任意で、入力すると地図管理へ自動で反映されます。"],
+                ["サンプル橋", "2025年度", "サンプル橋梁点検業務", ""],
+                ["", "", "", ""]
             ]);
             // Adjust column width
-            ws['!cols'] = [{ wch: 30 }, { wch: 60 }];
+            ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 36 }, { wch: 60 }];
 
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Template");
@@ -947,6 +950,7 @@
             const file = files[0];
 
             let bridgeNames = [];
+            window.__rowMeta = null; // Excel/CSVのB列(年度)・C列(業務名)。bridgeNamesと同じ並び
 
             document.getElementById('drop-zone').style.display = 'none';
             document.getElementById('loading-area').style.display = 'block';
@@ -1036,6 +1040,29 @@
             document.getElementById('step2').style.display = 'block';
         }
 
+        // リストのB列(年度)・C列(業務名)を「地図に保存」の入力欄へ反映する。
+        // 全行で同じ値ならそのまま入力、複数種類ある場合は業務ごとに分けて保存する旨を案内する。
+        function applyRowMetaToSaveInputs() {
+            const nendoInput = document.getElementById('save-nendo-input');
+            const gyomuInput = document.getElementById('save-gyomu-input');
+            const hint = document.getElementById('save-meta-hint');
+            const meta = window.__rowMeta || [];
+            const uniq = key => [...new Set(meta.map(m => m[key]).filter(Boolean))];
+            const nendos = uniq('nendo');
+            const gyomus = uniq('gyomu');
+            nendoInput.value = nendos.length === 1 ? nendos[0] : '';
+            gyomuInput.value = gyomus.length === 1 ? gyomus[0] : '';
+            const groupCount = new Set(meta.map(m => `${m.nendo}::${m.gyomu}`)).size;
+            if (!meta.length) {
+                hint.style.display = 'none';
+            } else {
+                hint.style.display = 'block';
+                hint.textContent = groupCount > 1
+                    ? `リストの年度・業務名に従い、${groupCount}件の業務に分けて保存します（空欄の行は上の入力欄の値で保存）。`
+                    : 'リストの年度・業務名を自動入力しました。';
+            }
+        }
+
         function renderConfirmationTable(names) {
             delete window.__pendingMapFeatures;
             const tbody = document.getElementById('results-tbody');
@@ -1048,7 +1075,9 @@
                 document.getElementById('search-summary-text').textContent = window.currentSearchSummary;
             }
 
-            names.forEach(name => {
+            applyRowMetaToSaveInputs();
+
+            names.forEach((name, rowIndex) => {
                 const candidates = apiResults[name] || [];
                 const tr = document.createElement('tr');
 
@@ -1077,6 +1106,11 @@
                     const select = document.createElement('select');
                     select.className = 'candidate-select';
                     select.dataset.bridgeName = name; // Used to collect features later
+                    const rowMeta = window.__rowMeta?.[rowIndex];
+                    if (rowMeta) {
+                        select.dataset.nendo = rowMeta.nendo || '';
+                        select.dataset.gyomu = rowMeta.gyomu || '';
+                    }
 
                     candidates.forEach((cand, idx) => {
                         const opt = document.createElement('option');
@@ -1140,6 +1174,23 @@
             return features;
         }
         window.collectSelectedFeatures = collectSelectedFeatures;
+
+        // リストにB列(年度)・C列(業務名)がある場合は、その単位に分けて返す。空欄の行は保存欄の値で補う。
+        function collectSelectedFeatureGroups(fallbackNendo, fallbackGyomu) {
+            const groups = new Map();
+            document.querySelectorAll('.candidate-select').forEach(select => {
+                const idx = parseInt(select.value, 10);
+                const feature = idx >= 0 ? apiResults[select.dataset.bridgeName]?.[idx]?.feature : null;
+                if (!feature) return;
+                const nendo = select.dataset.nendo || fallbackNendo;
+                const gyomu = select.dataset.gyomu || fallbackGyomu;
+                const key = `${nendo}::${gyomu}`;
+                if (!groups.has(key)) groups.set(key, { nendo, gyomu, features: [] });
+                groups.get(key).features.push(feature);
+            });
+            return [...groups.values()];
+        }
+        window.collectSelectedFeatureGroups = collectSelectedFeatureGroups;
         function rememberSelectedFeaturesForMap() {
             const features = collectSelectedFeatures();
             if (!features.length) {
@@ -1199,7 +1250,16 @@
                 a.remove();
                 window.URL.revokeObjectURL(url);
 
-                if (!window.__savedToMapThisSession && confirm('地図管理にはまだ保存されていません。年度・業務名を指定して保存しますか？（後日ブラウザから見返せます）')) {
+                const listGroups = window.__rowMeta ? collectSelectedFeatureGroups(
+                    document.getElementById('save-nendo-input').value.trim(),
+                    document.getElementById('save-gyomu-input').value.trim()) : [];
+                if (!window.__savedToMapThisSession && listGroups.length && listGroups.every(g => g.nendo && g.gyomu)) {
+                    // リストに年度・業務名があれば入力済みの内容でそのまま保存を提案する
+                    if (confirm(`地図管理にはまだ保存されていません。リストの年度・業務名（${listGroups.map(g => `${g.nendo} / ${g.gyomu}`).join('、')}）で保存しますか？`)
+                        && typeof window.saveToMap === 'function') {
+                        await window.saveToMap();
+                    }
+                } else if (!window.__savedToMapThisSession && confirm('地図管理にはまだ保存されていません。年度・業務名を指定して保存しますか？（後日ブラウザから見返せます）')) {
                     const nendo = prompt('年度を入力してください（例: 2025年度）', document.getElementById('save-nendo-input').value || '');
                     const gyomu = prompt('業務名を入力してください', document.getElementById('save-gyomu-input').value || '');
                     if (nendo && gyomu) {
@@ -1223,25 +1283,32 @@
         }
 
         // Extract column A logic
+        // A列=施設名、B列=年度、C列=業務名（B・Cは任意）。window.__rowMeta に names と同じ並びで年度・業務名を残す。
         function extractColumnA(data) {
             const names = [];
+            const meta = [];
+            const cellText = v => (v === undefined || v === null) ? '' : v.toString().trim();
             // Skip header (i=0 -> start from i=1)
             for (let i = 1; i < data.length; i++) {
                 const row = data[i];
                 // Assuming it's an array of arrays or array of objects
-                let val = null;
+                let cells;
                 if (Array.isArray(row)) {
-                    val = row[0];
+                    cells = row;
                 } else {
-                    const keys = Object.keys(row);
-                    if (keys.length > 0) val = row[keys[0]];
+                    cells = Object.keys(row).map(k => row[k]);
                 }
 
-                if (val) {
-                    const cleanName = val.toString().trim();
-                    if (cleanName) names.push(cleanName);
+                const cleanName = cellText(cells[0]);
+                if (cleanName) {
+                    names.push(cleanName);
+                    // 「2025」「2025年」も「2025年度」に揃える（保存先キーの表記揺れで同じ業務が別扱い・上書きになるのを防ぐ）
+                    const rawNendo = cellText(cells[1]);
+                    const year = rawNendo.match(/(\d{4})/);
+                    meta.push({ nendo: year ? `${year[1]}年度` : rawNendo, gyomu: cellText(cells[2]) });
                 }
             }
+            window.__rowMeta = meta.some(m => m.nendo || m.gyomu) ? meta : null;
             return names;
         }
 
@@ -1251,14 +1318,13 @@
                 reader.onload = function (e) {
                     try {
                         const lines = e.target.result.split(/\r\n|\n/);
-                        const names = [];
+                        const rows = [];
                         // Skip header (i=1)
                         for (let i = 1; i < lines.length; i++) {
                             if (!lines[i].trim()) continue;
-                            const firstCol = lines[i].split(',')[0].trim().replace(/^"|"$/g, '');
-                            if (firstCol) names.push(firstCol);
+                            rows.push(lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, '')));
                         }
-                        resolve(names);
+                        resolve(extractColumnA([[], ...rows]));
                     } catch (err) { reject(err); }
                 };
                 reader.onerror = () => reject(new Error('CSV read error'));
@@ -1292,7 +1358,7 @@
         }
     </script>
     <script src="static/leaflet/leaflet.js"></script>
-    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/map.js?v=35"></script>
+    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/map.js?v=36"></script>
     <script>
         if (window.xrdsOffline) window.xrdsOffline.registerServiceWorker();
         if (new URLSearchParams(location.search).get("tab") === "map") setTimeout(() => switchTab("map"), 0);

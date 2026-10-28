@@ -2026,21 +2026,28 @@
         const button = document.getElementById('save-map-btn');
         const nendo = document.getElementById('save-nendo-input')?.value.trim();
         const gyomu = document.getElementById('save-gyomu-input')?.value.trim();
-        if (!nendo || !gyomu) { alert('保存する年度と業務名を入力してください。'); return; }
-        const features = typeof window.collectSelectedFeatures === 'function' ? window.collectSelectedFeatures() : [];
-        if (!features.length) { alert('保存する施設を選択してください。'); return; }
-        const request = async revision => fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nendo, gyomu, features, base_revision: revision }) });
+        // 施設リストのB列(年度)・C列(業務名)がある行はその単位に分けて保存し、空欄の行は入力欄の値で補う
+        const groups = typeof window.collectSelectedFeatureGroups === 'function' ? window.collectSelectedFeatureGroups(nendo || '', gyomu || '') : [];
+        if (!groups.length) { alert('保存する施設を選択してください。'); return; }
+        if (groups.some(group => !group.nendo || !group.gyomu)) { alert('保存する年度と業務名を入力してください。'); return; }
         if (button) { button.disabled = true; button.textContent = '保存中...'; }
         try {
-            let response = await request(null);
-            if (response.status === 409) {
-                const conflict = await response.json();
-                if (!confirm(`${conflict.error}\n\n現在の検索結果で上書き保存しますか？`)) return;
-                response = await request(conflict.current_revision);
+            const saved = [];
+            for (const group of groups) {
+                const request = async revision => fetch('/api/projects/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nendo: group.nendo, gyomu: group.gyomu, features: group.features, base_revision: revision }) });
+                let response = await request(null);
+                if (response.status === 409) {
+                    const conflict = await response.json();
+                    if (!confirm(`${conflict.error}\n\n現在の検索結果で上書き保存しますか？`)) continue;
+                    response = await request(conflict.current_revision);
+                }
+                if (!response.ok) throw new Error(await response.text());
+                saved.push(group.gyomu);
             }
-            if (!response.ok) throw new Error(await response.text());
-            window.__savedToMapThisSession = true;
-            alert(`「${gyomu}」として地図管理へ保存しました。`);
+            if (saved.length) {
+                window.__savedToMapThisSession = true;
+                alert(saved.length === 1 ? `「${saved[0]}」として地図管理へ保存しました。` : `${saved.length}件の業務（${saved.join('、')}）として地図管理へ保存しました。`);
+            }
         } catch (error) {
             alert(`地図に保存できません。\n${error.message}`);
         } finally {
