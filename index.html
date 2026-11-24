@@ -358,6 +358,8 @@
         .map-editor input, .map-editor select, .map-editor textarea { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font: inherit; }
         .map-editor [hidden] { display: none; }
         .map-editor textarea { min-height: 180px; font-family: Consolas, monospace; font-size: 12px; }
+        .map-editor label.map-check-row { display: flex; align-items: center; gap: 8px; color: var(--text-main, inherit); }
+        .map-editor label.map-check-row input { width: auto; margin: 0; padding: 0; }
         .map-field-help { display: block; margin-top: 4px; font-size: 10px; line-height: 1.4; color: var(--text-light); }
         .map-equipment-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; margin-top: 7px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: #f8faf9; }
         .map-equipment-legend span { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10px; color: var(--text-light); }
@@ -1388,7 +1390,7 @@
         }
     </script>
     <script src="static/leaflet/leaflet.js"></script>
-    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/csv_tools.js?v=1"></script><script src="static/map.js?v=37"></script>
+    <style id="xrds-print-page-style">@page { margin: 0; }</style><script src="static/offline.js?v=2"></script><script src="static/csv_tools.js?v=1"></script><script src="static/map.js?v=42"></script>
     <script>
         if (window.xrdsOffline) window.xrdsOffline.registerServiceWorker();
         if (new URLSearchParams(location.search).get("tab") === "map") setTimeout(() => switchTab("map"), 0);

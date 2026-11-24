@@ -32,6 +32,8 @@ const instrumented = source.replace(
         onDetailChange,
         onMapClick,
         layoutLabelPlacements,
+        getLabelColor,
+        getEffectiveHanteiKey,
         rectanglesOverlap,
         segmentsIntersect,
         segmentIntersectsRect,
@@ -56,7 +58,9 @@ assert.match(source, /leaflet-pane canvas/);
 assert.ok(source.includes('context.drawImage('));
 assert.match(source, /leaflet-pane svg/);
 assert.match(source, /typeof Path2D !== 'function'/);
-assert.ok(source.includes('const color = getColorFor(getHanteiKey(entry.feature.properties));'));
+assert.ok(source.includes('const color = getLabelColor(entry.feature.properties);'));
+assert.ok(source.includes('const leaderColor = PIN_COLOR;'));
+assert.ok(source.includes("color: leaderColor, weight"));
 assert.match(source, /await waitForPrintTiles\(mapContainer\);\s*if \(renderTimer\) \{\s*clearTimeout\(renderTimer\);\s*renderTimer = null;\s*\}\s*renderVisibleMarkers\(\);\s*await waitForLeafletPaint\(\);/);
 const elements = {
     'map-detail-panel': { innerHTML: '' },
@@ -220,6 +224,8 @@ const projectTreeAction = (action, featureIndex) => {
     Object.assign(elements, {
         'map-edit-display-name': { value: '空地点A' },
         'map-edit-work-status': { value: '準備中' },
+        'map-edit-post-hantei': { value: '' },
+        'map-edit-label-no-color': { checked: false },
         'map-edit-equipment-select': { id: 'map-edit-equipment-select', value: '橋梁点検車' },
         'map-edit-equipment-other-wrap': { hidden: true },
         'map-edit-equipment-other': { value: '', focus() {} },
@@ -243,10 +249,36 @@ const projectTreeAction = (action, featureIndex) => {
     assert.equal(savedPayload.features[0].properties.XRDS_note, '地図上で追加');
     assert.equal(project.dirty, false);
 
+    assert.match(elements['map-detail-panel'].innerHTML, /id="map-edit-post-hantei"/);
+    assert.match(elements['map-detail-panel'].innerHTML, /id="map-edit-label-no-color"/);
     elements['map-edit-equipment-select'].value = '施設点検車';
     await test.onDetailClick(clickAction('apply-feature'));
     assert.equal(project.features[0].properties.XRDS_equipment, '施設点検車');
     assert.match(elements['map-detail-panel'].innerHTML, /<option value="施設点検車" selected>/);
+
+    // 点検後判定区分: 原本属性は不変のまま、入力値が旗揚げ色の基準になる
+    const hanteiProps = project.features[0].properties;
+    hanteiProps.RSDB_tenken_kiroku_hantei_kubun = '1';
+    assert.equal(test.getEffectiveHanteiKey(hanteiProps), '1');
+    elements['map-edit-post-hantei'].value = '4';
+    await test.onDetailClick(clickAction('apply-feature'));
+    assert.equal(hanteiProps.XRDS_post_hantei, '4');
+    assert.equal(hanteiProps.RSDB_tenken_kiroku_hantei_kubun, '1');
+    assert.equal(test.getEffectiveHanteiKey(hanteiProps), '4');
+    assert.notEqual(test.getLabelColor(hanteiProps).fill, '#ffffff');
+    assert.match(elements['map-detail-panel'].innerHTML, /<option value="4" selected>/);
+    elements['map-edit-label-no-color'].checked = true;
+    await test.onDetailClick(clickAction('apply-feature'));
+    assert.equal(hanteiProps.XRDS_label_no_color, true);
+    assert.equal(test.getLabelColor(hanteiProps).fill, '#ffffff');
+    assert.match(elements['map-detail-panel'].innerHTML, /id="map-edit-label-no-color" checked/);
+    elements['map-edit-label-no-color'].checked = false;
+    elements['map-edit-post-hantei'].value = '';
+    await test.onDetailClick(clickAction('apply-feature'));
+    assert.equal('XRDS_post_hantei' in hanteiProps, false);
+    assert.equal('XRDS_label_no_color' in hanteiProps, false);
+    assert.equal(test.getEffectiveHanteiKey(hanteiProps), '1');
+    delete hanteiProps.RSDB_tenken_kiroku_hantei_kubun;
 
     Object.assign(elements, {
         'project-tree': { innerHTML: '' },
@@ -359,7 +391,7 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=37/);
+    assert.match(indexHtml, /static\/map\.js\?v=42/);
     assert.match(indexHtml, /id="map-current-location-btn"/);
     assert.match(indexHtml, /id="map-location-status"/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);

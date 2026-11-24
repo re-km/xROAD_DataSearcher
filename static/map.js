@@ -22,6 +22,7 @@
     const PRINT_PAPER_STORAGE_KEY = 'xrds-map-print-paper-v1';
     const PRINT_DISPLAY_SETTINGS_STORAGE_KEY = 'xrds-map-print-display-v1';
     const NEUTRAL_MAP_COLOR = { fill: 'rgba(255,255,255,.92)', text: '#1f2937', border: 'rgba(100,116,139,.9)' };
+    const WHITE_LABEL_COLOR = { fill: '#ffffff', text: '#1f2937', border: 'rgba(100,116,139,.9)' };
     const PIN_COLOR = '#000000';
     const PIN_SIZE_SCALE = .5;
     let displayOptions = loadDisplayOptions();
@@ -128,6 +129,12 @@
             `<option value="${escapeHtml(value)}" ${current === value ? 'selected' : ''}>${escapeHtml(value)}</option>`
         ).join('')}`;
     }
+    function renderPostHanteiOptions(currentValue) {
+        const current = String(currentValue ?? '').trim();
+        return `<option value="" ${current ? '' : 'selected'}>未入力（原本の判定区分を使用）</option>${['1', '2', '3', '4'].map(value =>
+            `<option value="${value}" ${current === value ? 'selected' : ''}>区分${value}</option>`
+        ).join('')}`;
+    }
     function renderEquipmentSelectOptions(currentValue) {
         const current = String(currentValue ?? '').trim();
         const custom = Boolean(current) && !EQUIPMENT_OPTIONS.includes(current);
@@ -147,10 +154,28 @@
         const value = raw === undefined || raw === null ? '' : String(raw).trim();
         return ['1', '2', '3', '4'].includes(value) ? value : 'other';
     }
+    // 点検後判定区分（社内入力）。原本の判定区分は変更せず、入力があれば色分け・絞り込みの基準として優先する。
+    function getPostHanteiValue(props) {
+        const value = String(props?.XRDS_post_hantei ?? '').trim();
+        return ['1', '2', '3', '4'].includes(value) ? value : '';
+    }
+    function getEffectiveHanteiKey(props) {
+        return getPostHanteiValue(props) || getHanteiKey(props);
+    }
+    function isLabelColorDisabled(props) {
+        return props?.XRDS_label_no_color === true;
+    }
+    function formatOriginalHantei(props) {
+        const raw = String(props?.RSDB_tenken_kiroku_hantei_kubun ?? '').trim();
+        return ['1', '2', '3', '4'].includes(raw) ? `区分${raw}` : (raw || '未設定');
+    }
     function getColorFor(key) {
         if (!displayOptions.hanteiColors) return NEUTRAL_MAP_COLOR;
         const fallback = { fill: 'rgba(150,150,150,.8)', text: '#111', border: 'rgba(80,80,80,.9)' };
         return (styleRules && (styleRules[key] || styleRules.other)) || fallback;
+    }
+    function getLabelColor(props) {
+        return isLabelColorDisabled(props) ? WHITE_LABEL_COLOR : getColorFor(getEffectiveHanteiKey(props));
     }
     function getCoordinates(feature) {
         const coords = feature && feature.geometry && feature.geometry.coordinates;
@@ -1668,7 +1693,7 @@
             cluster.count += 1;
             cluster.lat += entry.coord.lat;
             cluster.lng += entry.coord.lng;
-            const hanteiKey = getHanteiKey(entry.feature.properties);
+            const hanteiKey = getEffectiveHanteiKey(entry.feature.properties);
             if (severity[hanteiKey] > severity[cluster.hanteiKey]) cluster.hanteiKey = hanteiKey;
         });
         const obstaclePoints = [];
@@ -1733,7 +1758,8 @@
         const layout = layoutLabelPlacements(items, mapSize, extraObstaclePoints, fixedPlacements);
         layout.placements.forEach(placement => {
             const { entry, baseTitle, scheduleHtml, equipment, equipmentBorderColor } = placement.item;
-            const color = getColorFor(getHanteiKey(entry.feature.properties));
+            const color = getLabelColor(entry.feature.properties);
+            const leaderColor = PIN_COLOR; // 引出線は常にピンと同じ色
             const labelPoint = L.point(placement.rect.left, placement.rect.top);
             const labelLatLng = placement.fixed
                 ? [placement.item.printAnchor.lat, placement.item.printAnchor.lng]
@@ -1742,7 +1768,7 @@
             const lineTarget = leafletMap.containerPointToLatLng(lineTargetPoint);
             const leader = L.polyline(
                 [[entry.coord.lat, entry.coord.lng], lineTarget],
-                { pane: 'xrds-leader-pane', color: color.border, weight: 1.2, opacity: .72, interactive: false }
+                { pane: 'xrds-leader-pane', color: leaderColor, weight: 0.6, opacity: 1, interactive: false }
             );
             leader.addTo(entry.project.leafletGroup);
             const equipmentTitle = equipment ? ' title="equipment: ' + escapeHtml(equipment) + '"' : '';
@@ -1812,7 +1838,7 @@
             project.features.forEach((feature, index) => {
                 const coord = getCoordinates(feature);
                 if (coord && paddedBounds.contains([coord.lat, coord.lng])
-                        && hanteiFilter.has(getHanteiKey(feature.properties))) {
+                        && hanteiFilter.has(getEffectiveHanteiKey(feature.properties))) {
                     entries.push({ project, index, feature, coord });
                 }
             });
@@ -1872,7 +1898,7 @@
             const noteToken = ++mobileNoteRenderToken;
             panel.innerHTML = `<h3 class="map-panel-title">地点詳細 <span style="font-size:12px;color:var(--text-light);">${escapeHtml(project.gyomu)} / ${index + 1}</span></h3>
               <p class="map-mobile-readonly-note">持ち出し版は閲覧専用です。編集はPC版で行ってください。</p>
-              <div class="map-readonly-summary"><strong>${escapeHtml(getFeatureDisplayName(feature, index))}</strong>${props.XRDS_work_status ? `<span>進捗: ${escapeHtml(props.XRDS_work_status)}</span>` : ''}${equipment ? `<span>使用機材: ${escapeHtml(equipment)}</span>` : ''}${coord ? `<span>緯度経度: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>` : ''}</div>
+              <div class="map-readonly-summary"><strong>${escapeHtml(getFeatureDisplayName(feature, index))}</strong>${props.XRDS_work_status ? `<span>進捗: ${escapeHtml(props.XRDS_work_status)}</span>` : ''}${getPostHanteiValue(props) ? `<span>点検後判定区分: 区分${getPostHanteiValue(props)}</span>` : ''}${equipment ? `<span>使用機材: ${escapeHtml(equipment)}</span>` : ''}${coord ? `<span>緯度経度: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>` : ''}</div>
               ${renderScheduleDetail(props)}
               ${renderOriginalAttributes(props)}
               ${renderMobileNotePanel()}`;
@@ -1883,6 +1909,9 @@
           <div class="map-editor"><label>元の施設名<input value="${escapeHtml(props.DPF_title || '')}" readonly></label>
           <label>地図上の表示名（社内用）<input id="map-edit-display-name" value="${escapeHtml(props.XRDS_display_name || '')}" placeholder="未入力なら元の施設名を表示"></label>
           <label>社内進捗<select id="map-edit-work-status">${renderWorkStatusOptions(props.XRDS_work_status)}</select></label>
+          <label>点検後判定区分（社内入力）<select id="map-edit-post-hantei">${renderPostHanteiOptions(getPostHanteiValue(props))}</select></label>
+          <small class="map-field-help">原本の判定区分: ${escapeHtml(formatOriginalHantei(props))}。入力すると地図上の旗揚げの背景色がこの区分の色になります（原本属性は変更されません）。</small>
+          <label class="map-check-row"><input type="checkbox" id="map-edit-label-no-color" ${isLabelColorDisabled(props) ? 'checked' : ''}> 判定区分の色を反映しない（旗揚げの背景を白にする）</label>
           <label>使用機材<select id="map-edit-equipment-select">${renderEquipmentSelectOptions(equipment)}</select></label>
           <label id="map-edit-equipment-other-wrap" ${customEquipment ? '' : 'hidden'}>その他の使用機材<input id="map-edit-equipment-other" value="${customEquipment ? escapeHtml(equipment) : ''}" placeholder="使用機材名を入力"></label>
           ${renderScheduleDetail(props)}
@@ -1903,6 +1932,16 @@
         const properties = feature.properties || (feature.properties = {});
         properties.XRDS_display_name = displayNameInput.value.trim();
         properties.XRDS_work_status = document.getElementById('map-edit-work-status').value;
+        const postHanteiSelect = document.getElementById('map-edit-post-hantei');
+        if (postHanteiSelect) {
+            if (['1', '2', '3', '4'].includes(postHanteiSelect.value)) properties.XRDS_post_hantei = postHanteiSelect.value;
+            else delete properties.XRDS_post_hantei;
+        }
+        const labelNoColorCheckbox = document.getElementById('map-edit-label-no-color');
+        if (labelNoColorCheckbox) {
+            if (labelNoColorCheckbox.checked) properties.XRDS_label_no_color = true;
+            else delete properties.XRDS_label_no_color;
+        }
         const equipmentSelect = document.getElementById('map-edit-equipment-select');
         const equipmentOther = document.getElementById('map-edit-equipment-other');
         const previousEquipment = String(properties.XRDS_equipment || '').trim();
