@@ -26,6 +26,7 @@ const instrumented = source.replace(
         printDisplayOptions() { return { ...printDisplayOptions }; },
         getPrintPaperSpec,
         drawPrintVectorLayers,
+        fitPrintMapRect,
         waitForLeafletPaint,
         getLocationErrorMessage,
         onDetailClick,
@@ -141,6 +142,16 @@ test.drawPrintVectorLayers(
     { left: 100, top: 50, width: 400, height: 200 },
     { left: 10, top: 20, width: 800, height: 400 },
 );
+// JPEG出力: 画面と用紙の縦横比が違っても同じ倍率で収める（ラベルの文字が枠からはみ出さない）
+const printFrame = { left: 10, top: 20, width: 800, height: 600 };
+for (const screen of [{ left: 0, top: 0, width: 1600, height: 790 }, { left: 0, top: 0, width: 390, height: 700 }]) {
+    const fitted = test.fitPrintMapRect(screen, printFrame);
+    assert.ok(Math.abs(fitted.width / screen.width - fitted.height / screen.height) < 1e-9);
+    assert.ok(fitted.left >= 10 - 1e-9 && fitted.top >= 20 - 1e-9);
+    assert.ok(fitted.left + fitted.width <= 810 + 1e-9 && fitted.top + fitted.height <= 620 + 1e-9);
+    assert.ok(Math.abs(fitted.left * 2 + fitted.width - 820) < 1e-9);
+    assert.ok(Math.abs(fitted.top * 2 + fitted.height - 640) < 1e-9);
+}
 assert.equal(vectorDraws.length, 2);
 assert.match(test.getLocationErrorMessage({ code: 1 }), /許可されていません/);
 assert.match(test.getLocationErrorMessage({ code: 2 }), /取得できませんでした/);
@@ -391,7 +402,7 @@ const projectTreeAction = (action, featureIndex) => {
     const indexHtml = fs.readFileSync(indexPath, 'utf8');
     assert.match(indexHtml, /\.xrds-label-text\.has-equipment\s*\{\s*border-width:\s*4px;/);
     assert.match(indexHtml, /\.xrds-label-text\s*\{[^}]*border:\s*1px solid;/);
-    assert.match(indexHtml, /static\/map\.js\?v=42/);
+    assert.match(indexHtml, /static\/map\.js\?v=43/);
     assert.match(indexHtml, /id="map-current-location-btn"/);
     assert.match(indexHtml, /id="map-location-status"/);
     assert.match(indexHtml, /id="map-label-color-toggle"/);

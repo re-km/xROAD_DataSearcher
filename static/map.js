@@ -606,7 +606,8 @@
     }
     async function initLeafletMap() {
         await ensureStyleRules();
-        leafletMap = L.map('leaflet-map', { preferCanvas: true }).setView([35.68, 139.76], 6);
+        // ボタン・ホイール・ピンチの拡大縮小を0.5段刻みにする（Leaflet既定は1段）
+        leafletMap = L.map('leaflet-map', { preferCanvas: true, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 120 }).setView([35.68, 139.76], 6);
         leafletMap.createPane('xrds-leader-pane');
         leafletMap.getPane('xrds-leader-pane').style.zIndex = '350';
         leafletMap.getPane('xrds-leader-pane').style.pointerEvents = 'none';
@@ -709,6 +710,19 @@
             height: rect.height * scaleY,
         };
     }
+    // 画面の地図を縦横同じ倍率で用紙の枠に収める。
+    // 倍率が縦横で違うと、ラベル枠（横の倍率）より文字（縦の倍率）が長くなってはみ出す。
+    function fitPrintMapRect(mapRect, frame) {
+        const scale = Math.min(frame.width / mapRect.width, frame.height / mapRect.height);
+        const width = mapRect.width * scale;
+        const height = mapRect.height * scale;
+        return {
+            left: frame.left + (frame.width - width) / 2,
+            top: frame.top + (frame.height - height) / 2,
+            width,
+            height,
+        };
+    }
     function cssNumber(value, fallback = 0) {
         const parsed = Number.parseFloat(value);
         return Number.isFinite(parsed) ? parsed : fallback;
@@ -795,6 +809,11 @@
         context.lineWidth = Math.max(1, cssNumber(style.borderTopWidth, 1) * Math.min(scaleX, scaleY));
         context.strokeStyle = style.borderTopColor || '#64748b';
         context.stroke();
+        const border = context.lineWidth;
+        context.save();
+        context.beginPath();
+        context.rect(destination.left + border, destination.top + border, destination.width - border * 2, destination.height - border * 2);
+        context.clip(); // 画面の overflow:hidden と同じく、収まらない文字は枠の内側で切る
         const paddingLeft = cssNumber(style.paddingLeft, 7) * scaleX;
         context.font = (style.fontWeight || '600') + ' ' + (cssNumber(style.fontSize, 12) * scaleY) + 'px ' + (style.fontFamily || 'sans-serif');
         context.textBaseline = 'middle';
@@ -815,6 +834,7 @@
             context.fillStyle = badgeStyle.color || '#334155';
             context.fillText(badge.textContent.trim(), badgeDestination.left + 4 * scaleX, badgeDestination.top + badgeDestination.height / 2);
         }
+        context.restore();
     }
     function drawPrintHeader(context, target) {
         if (!printDisplayOptions.header) return;
@@ -896,11 +916,17 @@
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, canvas.width, canvas.height);
         const margin = canvas.width * 10 / spec.widthMm;
-        const target = { left: margin, top: margin, width: canvas.width - margin * 2, height: canvas.height - margin * 2 };
+        const frame = { left: margin, top: margin, width: canvas.width - margin * 2, height: canvas.height - margin * 2 };
+        const target = fitPrintMapRect(mapRect, frame);
+        context.save();
+        context.beginPath();
+        context.rect(target.left, target.top, target.width, target.height);
+        context.clip(); // 画面外まで読み込まれているタイルが余白へはみ出さないようにする
         drawPrintTiles(context, mapContainer, mapRect, target);
         drawPrintVectorLayers(context, mapContainer, mapRect, target);
         mapContainer.querySelectorAll('.xrds-label-text').forEach(label => drawPrintLabel(context, label, mapRect, target));
-        drawPrintHeader(context, target);
+        context.restore();
+        drawPrintHeader(context, frame);
         drawPrintPaneTabs(context, mapContainer, mapRect, target);
         return canvas;
     }
@@ -933,6 +959,7 @@
         } catch (error) {
             alert('JPEG出力に失敗しました。' + String.fromCharCode(10) + error.message);
         } finally {
+            if (button) { button.disabled = false; button.textContent = 'JPEG出力'; }
             updatePrintControls();
         }
     }
